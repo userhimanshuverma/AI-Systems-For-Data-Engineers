@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Day 01 — Data Pipeline vs AI System</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0d0d0d;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 32px 24px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 6px;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #666;
+      margin-bottom: 36px;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+    }
+
+    button {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 0.03em;
+    }
+
+    #btn-traditional {
+      background: #1a3a5c;
+      color: #7eb8f7;
+      border: 1px solid #2a5a8c;
+    }
+    #btn-traditional:hover { background: #1e4a74; }
+    #btn-traditional.active { background: #2a6aaa; color: #fff; border-color: #4a9adf; }
+
+    #btn-ai {
+      background: #2d1a4a;
+      color: #b07ef7;
+      border: 1px solid #4a2a7c;
+    }
+    #btn-ai:hover { background: #3a2060; }
+    #btn-ai.active { background: #5a30aa; color: #fff; border-color: #8a60df; }
+
+    #btn-compare {
+      background: #1a3a2a;
+      color: #7ef7b0;
+      border: 1px solid #2a6a4a;
+    }
+    #btn-compare:hover { background: #1e4a34; }
+    #btn-compare.active { background: #2a7a4a; color: #fff; border-color: #4adf8a; }
+
+    #btn-reset {
+      background: #2a2a2a;
+      color: #888;
+      border: 1px solid #3a3a3a;
+    }
+    #btn-reset:hover { background: #333; color: #aaa; }
+
+    /* ── VIEWS ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── SINGLE PIPELINE VIEW ── */
+    .pipeline-container {
+      max-width: 860px;
+      margin: 0 auto;
+    }
+
+    .pipeline-title {
+      text-align: center;
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 28px;
+      padding: 8px 20px;
+      border-radius: 6px;
+      display: inline-block;
+      width: 100%;
+    }
+
+    .pipeline-title.trad { color: #7eb8f7; background: #0d1e30; border: 1px solid #1a3a5c; }
+    .pipeline-title.ai   { color: #b07ef7; background: #1a0d30; border: 1px solid #3a1a6c; }
+
+    .pipeline {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0;
+    }
+
+    .step {
+      width: 320px;
+      padding: 14px 20px;
+      border-radius: 8px;
+      text-align: center;
+      position: relative;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.4s ease, transform 0.4s ease, box-shadow 0.3s;
+    }
+
+    .step.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .step.active-step {
+      box-shadow: 0 0 0 2px #fff4, 0 0 20px 4px rgba(255,255,255,0.08);
+    }
+
+    .step-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+      opacity: 0.7;
+    }
+
+    .step-name {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 3px;
+    }
+
+    .step-detail {
+      font-size: 0.75rem;
+      opacity: 0.6;
+    }
+
+    /* Traditional step colors */
+    .t-source   { background: #111; border: 1px solid #333; color: #ccc; }
+    .t-ingest   { background: #0d1e30; border: 1px solid #1a3a5c; color: #7eb8f7; }
+    .t-transform{ background: #0d1e30; border: 1px solid #1a3a5c; color: #7eb8f7; }
+    .t-store    { background: #0d1e30; border: 1px solid #1a3a5c; color: #7eb8f7; }
+    .t-query    { background: #0d1e30; border: 1px solid #1a3a5c; color: #7eb8f7; }
+    .t-consume  { background: #0d2a1a; border: 1px solid #1a5c2a; color: #7ef7a0; }
+
+    /* AI step colors */
+    .a-source   { background: #111; border: 1px solid #333; color: #ccc; }
+    .a-ingest   { background: #0d1e30; border: 1px solid #1a3a5c; color: #7eb8f7; }
+    .a-enrich   { background: #1a0d30; border: 1px solid #3a1a6c; color: #b07ef7; }
+    .a-embed    { background: #1a0d30; border: 1px solid #3a1a6c; color: #b07ef7; }
+    .a-vector   { background: #1a0d30; border: 1px solid #3a1a6c; color: #b07ef7; }
+    .a-retrieve { background: #2a1a0d; border: 1px solid #6c3a1a; color: #f7b07e; }
+    .a-reason   { background: #2a0d1a; border: 1px solid #6c1a3a; color: #f77eb0; }
+    .a-act      { background: #0d2a2a; border: 1px solid #1a6c6c; color: #7ef7f7; }
+    .a-feedback { background: #1a1a0d; border: 1px solid #4a4a1a; color: #f7f77e; }
+
+    /* Arrow between steps */
+    .arrow {
+      width: 2px;
+      height: 28px;
+      background: linear-gradient(to bottom, #333, #555);
+      position: relative;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .arrow.visible { opacity: 1; }
+    .arrow::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 7px solid #555;
+    }
+
+    .arrow.animated::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 4px;
+      height: 8px;
+      background: #fff;
+      border-radius: 2px;
+      animation: flow-down 0.6s ease forwards;
+    }
+
+    @keyframes flow-down {
+      0%   { top: 0; opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    /* ── COMPARE VIEW ── */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    @media (max-width: 700px) {
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+
+    .compare-col { display: flex; flex-direction: column; align-items: center; }
+
+    /* ── INFO BAR ── */
+    .info-bar {
+      max-width: 860px;
+      margin: 28px auto 0;
+      padding: 14px 20px;
+      background: #141414;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      color: #888;
+      min-height: 52px;
+      transition: all 0.3s;
+    }
+
+    .info-bar span { color: #ccc; font-weight: 500; }
+
+    /* ── STATS BAR ── */
+    .stats {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+
+    .stat {
+      text-align: center;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.4s, transform 0.4s;
+    }
+    .stat.visible { opacity: 1; transform: translateY(0); }
+
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 0.7rem;
+      color: #666;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .stat-value.trad { color: #7eb8f7; }
+    .stat-value.ai   { color: #b07ef7; }
+
+    /* ── LEGEND ── */
+    .legend {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      margin-top: 24px;
+      flex-wrap: wrap;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: #888;
+    }
+    .legend-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Day 01 — Why Data Engineering is Changing</h1>
+  <p class="subtitle">Traditional Pipeline vs AI-Enabled Intelligent System</p>
+
+  <div class="controls">
+    <button id="btn-traditional" onclick="showView('traditional')">Traditional Pipeline</button>
+    <button id="btn-ai" onclick="showView('ai')">AI System</button>
+    <button id="btn-compare" onclick="showView('compare')">Side-by-Side</button>
+    <button id="btn-reset" onclick="resetAll()">Reset</button>
+  </div>
+
+  <!-- TRADITIONAL VIEW -->
+  <div id="view-traditional" class="view">
+    <div class="pipeline-container">
+      <div class="pipeline-title trad">Traditional Data Pipeline — Scheduled, Deterministic</div>
+      <div class="pipeline" id="trad-pipeline"></div>
+      <div class="info-bar" id="trad-info">Click a step to learn more.</div>
+      <div class="stats" id="trad-stats">
+        <div class="stat" id="ts1"><div class="stat-value trad">Hourly</div><div class="stat-label">Typical Latency</div></div>
+        <div class="stat" id="ts2"><div class="stat-value trad">SQL</div><div class="stat-label">Query Type</div></div>
+        <div class="stat" id="ts3"><div class="stat-value trad">Human</div><div class="stat-label">End Consumer</div></div>
+        <div class="stat" id="ts4"><div class="stat-value trad">Cron</div><div class="stat-label">Trigger</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI VIEW -->
+  <div id="view-ai" class="view">
+    <div class="pipeline-container">
+      <div class="pipeline-title ai">AI-Enabled Intelligent System — Event-Driven, Reasoning</div>
+      <div class="pipeline" id="ai-pipeline"></div>
+      <div class="info-bar" id="ai-info">Click a step to learn more.</div>
+      <div class="stats" id="ai-stats">
+        <div class="stat" id="as1"><div class="stat-value ai">&lt;500ms</div><div class="stat-label">Target Latency</div></div>
+        <div class="stat" id="as2"><div class="stat-value ai">Semantic</div><div class="stat-label">Query Type</div></div>
+        <div class="stat" id="as3"><div class="stat-value ai">LLM</div><div class="stat-label">End Consumer</div></div>
+        <div class="stat" id="as4"><div class="stat-value ai">Event</div><div class="stat-label">Trigger</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPARE VIEW -->
+  <div id="view-compare" class="view">
+    <div class="compare-grid">
+      <div class="compare-col">
+        <div class="pipeline-title trad" style="width:100%">Traditional Pipeline</div>
+        <div class="pipeline" id="compare-trad-pipeline"></div>
+      </div>
+      <div class="compare-col">
+        <div class="pipeline-title ai" style="width:100%">AI-Enabled System</div>
+        <div class="pipeline" id="compare-ai-pipeline"></div>
+      </div>
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#7eb8f7"></div>Data movement</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#b07ef7"></div>AI / ML layer</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f7b07e"></div>Retrieval</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f77eb0"></div>Reasoning</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#7ef7f7"></div>Action</div>
+    </div>
+  </div>
+
+  <script>
+    const TRAD_STEPS = [
+      { label: 'Source', name: 'Data Source', detail: 'DB / API / Logs', cls: 't-source',
+        info: '<span>Data Source</span> — Raw data origin. Databases, REST APIs, application logs, files. Data sits here until pulled.' },
+      { label: 'Ingest', name: 'Ingest Layer', detail: 'Kafka / Fivetran / Airbyte', cls: 't-ingest',
+        info: '<span>Ingest Layer</span> — Moves data from source to processing. Scheduled pulls or CDC (Change Data Capture). Runs on a timer.' },
+      { label: 'Transform', name: 'Transform Layer', detail: 'Spark / dbt / SQL', cls: 't-transform',
+        info: '<span>Transform Layer</span> — Cleans, reshapes, and aggregates raw data into structured tables. Deterministic: same input = same output.' },
+      { label: 'Store', name: 'Storage Layer', detail: 'Snowflake / BigQuery / S3', cls: 't-store',
+        info: '<span>Storage Layer</span> — Persists structured, queryable data. Optimized for columnar scans and SQL aggregations.' },
+      { label: 'Query', name: 'Query Layer', detail: 'SQL / Presto / Athena', cls: 't-query',
+        info: '<span>Query Layer</span> — Answers pre-defined questions via SQL. Fast for known queries, slow for exploratory or dynamic questions.' },
+      { label: 'Consume', name: 'Dashboard / BI', detail: 'Tableau / Looker / Metabase', cls: 't-consume',
+        info: '<span>Dashboard / BI</span> — A human reads a chart. The pipeline ends here. No reasoning, no action — just visualization.' },
+    ];
+
+    const AI_STEPS = [
+      { label: 'Source', name: 'Data Source', detail: 'Events / Streams / Docs', cls: 'a-source',
+        info: '<span>Data Source</span> — Same origin, but now includes unstructured data: support tickets, transcripts, logs, documents.' },
+      { label: 'Ingest', name: 'Kafka Stream', detail: 'Real-time event bus', cls: 'a-ingest',
+        info: '<span>Kafka Stream</span> — Events flow in real-time, not on a schedule. Every action is an event. Latency is seconds, not hours.' },
+      { label: 'Enrich', name: 'Stream Processing', detail: 'Flink / Kafka Streams', cls: 'a-enrich',
+        info: '<span>Stream Processing</span> — Enriches events in motion: joins with user metadata, filters noise, computes derived fields.' },
+      { label: 'Embed', name: 'Embedding Pipeline', detail: 'text → vectors', cls: 'a-embed',
+        info: '<span>Embedding Pipeline</span> — Converts text and structured data into dense vector representations. This is what makes semantic search possible.' },
+      { label: 'Store', name: 'Vector Store', detail: 'Pinecone / Qdrant / pgvector', cls: 'a-vector',
+        info: '<span>Vector Store</span> — Stores embeddings indexed for similarity search. Finds "meaning-similar" content, not just exact matches.' },
+      { label: 'Retrieve', name: 'Retrieval Layer', detail: 'Semantic + filtered search', cls: 'a-retrieve',
+        info: '<span>Retrieval Layer</span> — Given a query, finds the most relevant context. Combines vector similarity with metadata filters.' },
+      { label: 'Reason', name: 'LLM Reasoning', detail: 'OpenAI / Anthropic / local', cls: 'a-reason',
+        info: '<span>LLM Reasoning</span> — The model receives retrieved context and generates a response, decision, or structured output. This is the intelligence layer.' },
+      { label: 'Act', name: 'Agent / Action', detail: 'Responds / Routes / Triggers', cls: 'a-act',
+        info: '<span>Agent / Action</span> — The system acts on the LLM output: sends a response, triggers a workflow, updates a record, or calls an API.' },
+      { label: 'Feedback', name: 'Feedback Loop', detail: 'Logs outcome → improves retrieval', cls: 'a-feedback',
+        info: '<span>Feedback Loop</span> — Captures what worked and what didn\'t. Feeds back into the retrieval layer to improve future responses.' },
+    ];
+
+    function buildPipeline(containerId, steps, infoId, compact) {
+      const container = document.getElementById(containerId);
+      container.innerHTML = '';
+      steps.forEach((step, i) => {
+        if (i > 0) {
+          const arrow = document.createElement('div');
+          arrow.className = 'arrow';
+          arrow.id = `${containerId}-arrow-${i}`;
+          container.appendChild(arrow);
+        }
+        const el = document.createElement('div');
+        el.className = `step ${step.cls}`;
+        if (compact) el.style.width = '260px';
+        el.id = `${containerId}-step-${i}`;
+        el.innerHTML = `
+          <div class="step-label">${step.label}</div>
+          <div class="step-name">${step.name}</div>
+          <div class="step-detail">${step.detail}</div>
+        `;
+        if (infoId) {
+          el.style.cursor = 'pointer';
+          el.addEventListener('click', () => {
+            document.getElementById(infoId).innerHTML = step.info;
+            document.querySelectorAll(`#${containerId} .step`).forEach(s => s.classList.remove('active-step'));
+            el.classList.add('active-step');
+          });
+        }
+        container.appendChild(el);
+      });
+    }
+
+    function animatePipeline(containerId, steps, statsId) {
+      steps.forEach((_, i) => {
+        setTimeout(() => {
+          const step = document.getElementById(`${containerId}-step-${i}`);
+          if (step) step.classList.add('visible');
+          if (i > 0) {
+            const arrow = document.getElementById(`${containerId}-arrow-${i}`);
+            if (arrow) {
+              arrow.classList.add('visible');
+              setTimeout(() => arrow.classList.add('animated'), 100);
+            }
+          }
+        }, i * 180);
+      });
+      if (statsId) {
+        const stats = document.getElementById(statsId);
+        if (stats) {
+          Array.from(stats.children).forEach((s, i) => {
+            setTimeout(() => s.classList.add('visible'), steps.length * 180 + i * 120);
+          });
+        }
+      }
+    }
+
+    let currentView = null;
+
+    function showView(name) {
+      ['traditional', 'ai', 'compare'].forEach(v => {
+        document.getElementById(`view-${v}`).classList.remove('active');
+        document.getElementById(`btn-${v === 'compare' ? 'compare' : v}`).classList.remove('active');
+      });
+      document.getElementById(`view-${name}`).classList.add('active');
+      document.getElementById(`btn-${name}`).classList.add('active');
+
+      if (name === 'traditional') {
+        buildPipeline('trad-pipeline', TRAD_STEPS, 'trad-info', false);
+        animatePipeline('trad-pipeline', TRAD_STEPS, 'trad-stats');
+      } else if (name === 'ai') {
+        buildPipeline('ai-pipeline', AI_STEPS, 'ai-info', false);
+        animatePipeline('ai-pipeline', AI_STEPS, 'ai-stats');
+      } else if (name === 'compare') {
+        buildPipeline('compare-trad-pipeline', TRAD_STEPS, null, true);
+        buildPipeline('compare-ai-pipeline', AI_STEPS, null, true);
+        animatePipeline('compare-trad-pipeline', TRAD_STEPS, null);
+        animatePipeline('compare-ai-pipeline', AI_STEPS, null);
+      }
+      currentView = name;
+    }
+
+    function resetAll() {
+      ['traditional', 'ai', 'compare'].forEach(v => {
+        document.getElementById(`view-${v}`).classList.remove('active');
+      });
+      ['traditional', 'ai', 'compare'].forEach(v => {
+        document.getElementById(`btn-${v}`).classList.remove('active');
+      });
+      currentView = null;
+    }
+
+    // Start with compare view
+    showView('compare');
+  </script>
+</body>
+</html>
