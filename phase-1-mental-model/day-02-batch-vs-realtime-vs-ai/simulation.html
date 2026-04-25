@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Day 02 — Batch vs Real-Time vs AI Systems</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --batch-color: #7eb8f7;
+      --batch-bg: #0d1e30;
+      --batch-border: #1a3a5c;
+      --rt-color: #7ef7a0;
+      --rt-bg: #0d2a1a;
+      --rt-border: #1a5c2a;
+      --ai-color: #b07ef7;
+      --ai-bg: #1a0d30;
+      --ai-border: #3a1a6c;
+    }
+
+    body {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding: 28px 20px 48px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+    .subtitle {
+      text-align: center;
+      font-size: 0.82rem;
+      color: #555;
+      margin-bottom: 32px;
+    }
+
+    /* ── TABS ── */
+    .tabs {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      padding: 9px 22px;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid #2a2a2a;
+      background: #141414;
+      color: #666;
+      transition: all 0.2s;
+      letter-spacing: 0.04em;
+    }
+    .tab:hover { color: #aaa; border-color: #444; }
+    .tab.batch.active  { background: var(--batch-bg); color: var(--batch-color); border-color: var(--batch-border); }
+    .tab.rt.active     { background: var(--rt-bg);    color: var(--rt-color);    border-color: var(--rt-border); }
+    .tab.ai.active     { background: var(--ai-bg);    color: var(--ai-color);    border-color: var(--ai-border); }
+    .tab.all.active    { background: #1a1a1a; color: #fff; border-color: #444; }
+
+    /* ── VIEWS ── */
+    .view { display: none; }
+    .view.active { display: block; }
+
+    /* ── SINGLE FLOW ── */
+    .flow-wrap {
+      max-width: 520px;
+      margin: 0 auto;
+    }
+
+    .flow-header {
+      text-align: center;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 28px;
+    }
+    .flow-header.batch { background: var(--batch-bg); color: var(--batch-color); border: 1px solid var(--batch-border); }
+    .flow-header.rt    { background: var(--rt-bg);    color: var(--rt-color);    border: 1px solid var(--rt-border); }
+    .flow-header.ai    { background: var(--ai-bg);    color: var(--ai-color);    border: 1px solid var(--ai-border); }
+
+    .flow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .node {
+      width: 340px;
+      padding: 13px 18px;
+      border-radius: 8px;
+      text-align: center;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.35s ease, transform 0.35s ease, box-shadow 0.25s;
+      cursor: default;
+    }
+    .node.show { opacity: 1; transform: translateY(0); }
+    .node.pulse { box-shadow: 0 0 0 2px rgba(255,255,255,0.15), 0 0 18px 4px rgba(255,255,255,0.06); }
+
+    .node-tag {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      opacity: 0.6;
+      margin-bottom: 3px;
+    }
+    .node-name { font-size: 0.95rem; font-weight: 600; margin-bottom: 2px; }
+    .node-detail { font-size: 0.72rem; opacity: 0.55; }
+
+    /* batch nodes */
+    .bn-source   { background: #111; border: 1px solid #2a2a2a; color: #ccc; }
+    .bn-schedule { background: var(--batch-bg); border: 1px solid var(--batch-border); color: var(--batch-color); }
+    .bn-spark    { background: var(--batch-bg); border: 1px solid var(--batch-border); color: var(--batch-color); }
+    .bn-store    { background: var(--batch-bg); border: 1px solid var(--batch-border); color: var(--batch-color); }
+    .bn-sql      { background: var(--batch-bg); border: 1px solid var(--batch-border); color: var(--batch-color); }
+    .bn-dash     { background: #0d2a0d; border: 1px solid #1a5c1a; color: #a0f7a0; }
+
+    /* realtime nodes */
+    .rn-source   { background: #111; border: 1px solid #2a2a2a; color: #ccc; }
+    .rn-kafka    { background: var(--rt-bg); border: 1px solid var(--rt-border); color: var(--rt-color); }
+    .rn-flink    { background: var(--rt-bg); border: 1px solid var(--rt-border); color: var(--rt-color); }
+    .rn-pinot    { background: var(--rt-bg); border: 1px solid var(--rt-border); color: var(--rt-color); }
+    .rn-query    { background: var(--rt-bg); border: 1px solid var(--rt-border); color: var(--rt-color); }
+    .rn-alert    { background: #2a1a0d; border: 1px solid #6c3a1a; color: #f7b07e; }
+
+    /* ai nodes */
+    .an-query    { background: #111; border: 1px solid #2a2a2a; color: #ccc; }
+    .an-parse    { background: var(--ai-bg); border: 1px solid var(--ai-border); color: var(--ai-color); }
+    .an-embed    { background: var(--ai-bg); border: 1px solid var(--ai-border); color: var(--ai-color); }
+    .an-vector   { background: var(--ai-bg); border: 1px solid var(--ai-border); color: var(--ai-color); }
+    .an-retrieve { background: #2a1a0d; border: 1px solid #6c3a1a; color: #f7b07e; }
+    .an-llm      { background: #2a0d1a; border: 1px solid #6c1a3a; color: #f77eb0; }
+    .an-out      { background: #0d2a2a; border: 1px solid #1a6c6c; color: #7ef7f7; }
+
+    /* connector arrow */
+    .arrow {
+      width: 2px;
+      height: 24px;
+      position: relative;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .arrow.show { opacity: 1; }
+    .arrow::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 2px; height: 100%;
+      background: #333;
+    }
+    .arrow::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 50%;
+      transform: translateX(-50%);
+      border-left: 5px solid transparent;
+      border-right: 5px solid transparent;
+      border-top: 7px solid #444;
+    }
+    .arrow.animated::before {
+      background: linear-gradient(to bottom, #555, #222);
+      animation: pulse-line 0.5s ease forwards;
+    }
+    @keyframes pulse-line {
+      0%   { opacity: 0.3; }
+      50%  { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
+    /* ── INFO BOX ── */
+    .info-box {
+      max-width: 520px;
+      margin: 24px auto 0;
+      padding: 13px 18px;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      font-size: 0.8rem;
+      color: #777;
+      min-height: 48px;
+      transition: all 0.25s;
+    }
+    .info-box b { color: #ccc; }
+
+    /* ── STATS ── */
+    .stats-row {
+      display: flex;
+      justify-content: center;
+      gap: 28px;
+      margin-top: 28px;
+      flex-wrap: wrap;
+    }
+    .stat {
+      text-align: center;
+      opacity: 0;
+      transform: translateY(6px);
+      transition: opacity 0.4s, transform 0.4s;
+    }
+    .stat.show { opacity: 1; transform: translateY(0); }
+    .stat-val { font-size: 1.4rem; font-weight: 700; line-height: 1; }
+    .stat-lbl { font-size: 0.65rem; color: #555; margin-top: 3px; text-transform: uppercase; letter-spacing: 0.08em; }
+    .stat-val.batch { color: var(--batch-color); }
+    .stat-val.rt    { color: var(--rt-color); }
+    .stat-val.ai    { color: var(--ai-color); }
+
+    /* ── ALL VIEW ── */
+    .all-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+    @media (max-width: 800px) { .all-grid { grid-template-columns: 1fr; } }
+
+    .all-col { display: flex; flex-direction: column; align-items: center; }
+
+    /* ── COMPARE TABLE ── */
+    .compare-table-wrap {
+      max-width: 900px;
+      margin: 36px auto 0;
+      overflow-x: auto;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    th {
+      padding: 10px 14px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #222;
+      color: #666;
+    }
+    td {
+      padding: 10px 14px;
+      border-bottom: 1px solid #1a1a1a;
+      color: #aaa;
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    td:first-child { color: #666; font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .c-batch { color: var(--batch-color) !important; }
+    .c-rt    { color: var(--rt-color) !important; }
+    .c-ai    { color: var(--ai-color) !important; }
+
+    /* ── RESET BTN ── */
+    #btn-reset {
+      background: #1a1a1a;
+      color: #555;
+      border: 1px solid #2a2a2a;
+    }
+    #btn-reset:hover { color: #888; }
+  </style>
+</head>
+<body>
+
+<h1>Day 02 — Batch vs Real-Time vs AI Systems</h1>
+<p class="subtitle">Three paradigms. Different contracts. Different failure modes.</p>
+
+<div class="tabs">
+  <button class="tab batch" onclick="show('batch')">Batch Pipeline</button>
+  <button class="tab rt"    onclick="show('rt')">Real-Time Stream</button>
+  <button class="tab ai"    onclick="show('ai')">AI System</button>
+  <button class="tab all"   onclick="show('all')">Side-by-Side</button>
+  <button class="tab" id="btn-reset" onclick="resetAll()">Reset</button>
+</div>
+
+<!-- BATCH VIEW -->
+<div id="view-batch" class="view">
+  <div class="flow-wrap">
+    <div class="flow-header batch">Batch Pipeline — Scheduled · Deterministic · High Throughput</div>
+    <div class="flow" id="flow-batch"></div>
+    <div class="info-box" id="info-batch">Click any step to learn more.</div>
+    <div class="stats-row" id="stats-batch">
+      <div class="stat" id="bs1"><div class="stat-val batch">Hourly</div><div class="stat-lbl">Latency</div></div>
+      <div class="stat" id="bs2"><div class="stat-val batch">100%</div><div class="stat-lbl">Deterministic</div></div>
+      <div class="stat" id="bs3"><div class="stat-val batch">TBs/hr</div><div class="stat-lbl">Throughput</div></div>
+      <div class="stat" id="bs4"><div class="stat-val batch">Low</div><div class="stat-lbl">Cost/GB</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- REALTIME VIEW -->
+<div id="view-rt" class="view">
+  <div class="flow-wrap">
+    <div class="flow-header rt">Real-Time Stream — Event-Driven · Low Latency · Always-On</div>
+    <div class="flow" id="flow-rt"></div>
+    <div class="info-box" id="info-rt">Click any step to learn more.</div>
+    <div class="stats-row" id="stats-rt">
+      <div class="stat" id="rs1"><div class="stat-val rt">&lt;100ms</div><div class="stat-lbl">Latency</div></div>
+      <div class="stat" id="rs2"><div class="stat-val rt">M/sec</div><div class="stat-lbl">Events/sec</div></div>
+      <div class="stat" id="rs3"><div class="stat-val rt">Event</div><div class="stat-lbl">Trigger</div></div>
+      <div class="stat" id="rs4"><div class="stat-val rt">High</div><div class="stat-lbl">Infra Cost</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- AI VIEW -->
+<div id="view-ai" class="view">
+  <div class="flow-wrap">
+    <div class="flow-header ai">AI System — On-Demand · Probabilistic · Context-Driven</div>
+    <div class="flow" id="flow-ai"></div>
+    <div class="info-box" id="info-ai">Click any step to learn more.</div>
+    <div class="stats-row" id="stats-ai">
+      <div class="stat" id="as1"><div class="stat-val ai">~500ms</div><div class="stat-lbl">Latency</div></div>
+      <div class="stat" id="as2"><div class="stat-val ai">Semantic</div><div class="stat-lbl">Query Type</div></div>
+      <div class="stat" id="as3"><div class="stat-val ai">LLM</div><div class="stat-lbl">Consumer</div></div>
+      <div class="stat" id="as4"><div class="stat-val ai">Token</div><div class="stat-lbl">Cost Model</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ALL VIEW -->
+<div id="view-all" class="view">
+  <div class="all-grid">
+    <div class="all-col">
+      <div class="flow-header batch" style="width:100%;margin-bottom:20px">Batch</div>
+      <div class="flow" id="flow-all-batch"></div>
+    </div>
+    <div class="all-col">
+      <div class="flow-header rt" style="width:100%;margin-bottom:20px">Real-Time</div>
+      <div class="flow" id="flow-all-rt"></div>
+    </div>
+    <div class="all-col">
+      <div class="flow-header ai" style="width:100%;margin-bottom:20px">AI System</div>
+      <div class="flow" id="flow-all-ai"></div>
+    </div>
+  </div>
+  <div class="compare-table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th class="c-batch">Batch</th>
+          <th class="c-rt">Real-Time</th>
+          <th class="c-ai">AI System</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Latency</td><td class="c-batch">Minutes – Hours</td><td class="c-rt">Milliseconds</td><td class="c-ai">100ms – 2s</td></tr>
+        <tr><td>Trigger</td><td class="c-batch">Cron / Schedule</td><td class="c-rt">Event-driven</td><td class="c-ai">On-demand</td></tr>
+        <tr><td>Determinism</td><td class="c-batch">Fully deterministic</td><td class="c-rt">Deterministic</td><td class="c-ai">Probabilistic</td></tr>
+        <tr><td>Data format</td><td class="c-batch">Structured tables</td><td class="c-rt">Events / streams</td><td class="c-ai">Text / embeddings</td></tr>
+        <tr><td>Throughput</td><td class="c-batch">TBs / hour</td><td class="c-rt">Millions / sec</td><td class="c-ai">Tokens / sec</td></tr>
+        <tr><td>Cost model</td><td class="c-batch">Compute per job</td><td class="c-rt">Always-on infra</td><td class="c-ai">Per-token API</td></tr>
+        <tr><td>Best for</td><td class="c-batch">Analytics, reporting</td><td class="c-rt">Alerting, live UI</td><td class="c-ai">Reasoning, explanation</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  const BATCH = [
+    { tag:'Source',    name:'Data Source',       detail:'DB / S3 / API',              cls:'bn-source',
+      info:'<b>Data Source</b> — Raw data at rest. Could be a transactional DB, S3 files, or an API. Data waits here until the scheduled job pulls it.' },
+    { tag:'Schedule',  name:'Cron Trigger',       detail:'runs every hour / day',      cls:'bn-schedule',
+      info:'<b>Cron Trigger</b> — The job starts on a fixed schedule. Nothing happens between runs. This is the fundamental latency floor of batch systems.' },
+    { tag:'Process',   name:'Spark / dbt',        detail:'transform, aggregate, clean', cls:'bn-spark',
+      info:'<b>Spark / dbt</b> — Reads the full data window, applies transformations, computes aggregations. Deterministic: same input always produces same output.' },
+    { tag:'Store',     name:'Data Warehouse',     detail:'Snowflake / BigQuery',        cls:'bn-store',
+      info:'<b>Data Warehouse</b> — Stores structured, queryable output. Optimized for columnar scans and SQL aggregations over large datasets.' },
+    { tag:'Query',     name:'SQL Query',          detail:'known, pre-defined queries',  cls:'bn-sql',
+      info:'<b>SQL Query</b> — Analysts run fixed queries against the warehouse. Fast for known questions, slow for exploratory or dynamic ones.' },
+    { tag:'Consume',   name:'Dashboard / Report', detail:'Tableau / Looker / Metabase', cls:'bn-dash',
+      info:'<b>Dashboard</b> — A human reads a chart. The pipeline ends here. No reasoning, no action — just visualization of pre-computed data.' },
+  ];
+
+  const REALTIME = [
+    { tag:'Source',   name:'Event Source',       detail:'App / DB CDC / IoT',          cls:'rn-source',
+      info:'<b>Event Source</b> — Every user action, system event, or state change is published as an immutable event with a timestamp.' },
+    { tag:'Ingest',   name:'Kafka Topic',        detail:'durable, replayable stream',   cls:'rn-kafka',
+      info:'<b>Kafka Topic</b> — The event bus. Events are written to partitioned topics. Consumers can replay from any offset. Retention is configurable (hours to forever).' },
+    { tag:'Process',  name:'Flink / Kafka Streams', detail:'enrich, filter, aggregate', cls:'rn-flink',
+      info:'<b>Stream Processor</b> — Processes events as they arrive. Can join streams, maintain state (e.g., session windows), and emit derived events downstream.' },
+    { tag:'Store',    name:'Apache Pinot',       detail:'real-time OLAP store',         cls:'rn-pinot',
+      info:'<b>Apache Pinot</b> — Ingests from Kafka and makes data queryable within ~1 second of arrival. Sub-second SQL queries on data that\'s seconds old.' },
+    { tag:'Query',    name:'Low-Latency Query',  detail:'SQL on fresh data',            cls:'rn-query',
+      info:'<b>Low-Latency Query</b> — Applications query Pinot directly for fresh aggregations. P99 latency under 100ms even on millions of rows.' },
+    { tag:'Act',      name:'Alert / Live Update', detail:'PagerDuty / WebSocket / API', cls:'rn-alert',
+      info:'<b>Alert / Live Update</b> — The system reacts: fires an alert, updates a live dashboard, triggers a downstream workflow. No human needed in the loop.' },
+  ];
+
+  const AI = [
+    { tag:'Input',    name:'User Query',         detail:'natural language question',    cls:'an-query',
+      info:'<b>User Query</b> — A human or system asks an open-ended question. This can\'t be answered by a fixed SQL query — it requires reasoning over context.' },
+    { tag:'Parse',    name:'Query Parser',       detail:'intent + entity extraction',   cls:'an-parse',
+      info:'<b>Query Parser</b> — Extracts intent (what is being asked) and entities (user ID, time range, topic). Improves retrieval precision significantly.' },
+    { tag:'Embed',    name:'Query Embedding',    detail:'text → dense vector',          cls:'an-embed',
+      info:'<b>Query Embedding</b> — The query is converted to a vector using an embedding model. This enables semantic search — finding content by meaning, not keywords.' },
+    { tag:'Retrieve', name:'Vector Store',       detail:'Pinecone / Qdrant / pgvector', cls:'an-vector',
+      info:'<b>Vector Store</b> — Finds the top-k most semantically similar documents to the query vector. Can also filter by metadata (user_id, date range, etc.).' },
+    { tag:'Context',  name:'Context Assembly',   detail:'top-k chunks + structured data', cls:'an-retrieve',
+      info:'<b>Context Assembly</b> — Combines vector search results with structured data (from Pinot or SQL). Builds the context window that the LLM will reason over.' },
+    { tag:'Reason',   name:'LLM',                detail:'GPT-4o / Claude / local model', cls:'an-llm',
+      info:'<b>LLM</b> — Receives the assembled context and generates a response. Does not access any database directly — it only reasons over what\'s in the prompt.' },
+    { tag:'Output',   name:'Response / Action',  detail:'text · JSON · tool call',      cls:'an-out',
+      info:'<b>Response / Action</b> — The LLM output: a natural language answer, a structured JSON object, or a tool call that triggers a downstream action.' },
+  ];
+
+  function buildFlow(containerId, steps, infoId, compact) {
+    const c = document.getElementById(containerId);
+    c.innerHTML = '';
+    steps.forEach((s, i) => {
+      if (i > 0) {
+        const a = document.createElement('div');
+        a.className = 'arrow';
+        a.id = `${containerId}-a${i}`;
+        c.appendChild(a);
+      }
+      const n = document.createElement('div');
+      n.className = `node ${s.cls}`;
+      if (compact) n.style.width = '220px';
+      n.id = `${containerId}-n${i}`;
+      n.innerHTML = `<div class="node-tag">${s.tag}</div><div class="node-name">${s.name}</div><div class="node-detail">${s.detail}</div>`;
+      if (infoId) {
+        n.style.cursor = 'pointer';
+        n.addEventListener('click', () => {
+          document.getElementById(infoId).innerHTML = s.info;
+          document.querySelectorAll(`#${containerId} .node`).forEach(x => x.classList.remove('pulse'));
+          n.classList.add('pulse');
+        });
+      }
+      c.appendChild(n);
+    });
+  }
+
+  function animateFlow(containerId, steps, statsId, delay = 0) {
+    steps.forEach((_, i) => {
+      setTimeout(() => {
+        const n = document.getElementById(`${containerId}-n${i}`);
+        if (n) n.classList.add('show');
+        if (i > 0) {
+          const a = document.getElementById(`${containerId}-a${i}`);
+          if (a) { a.classList.add('show'); setTimeout(() => a.classList.add('animated'), 80); }
+        }
+      }, delay + i * 160);
+    });
+    if (statsId) {
+      const sw = document.getElementById(statsId);
+      if (sw) Array.from(sw.children).forEach((s, i) => {
+        setTimeout(() => s.classList.add('show'), delay + steps.length * 160 + i * 100);
+      });
+    }
+  }
+
+  let active = null;
+
+  function show(name) {
+    ['batch','rt','ai','all'].forEach(v => {
+      document.getElementById(`view-${v}`).classList.remove('active');
+      document.querySelector(`.tab.${v === 'all' ? 'all' : v}`)?.classList.remove('active');
+    });
+    document.getElementById(`view-${name}`).classList.add('active');
+    document.querySelector(`.tab.${name}`)?.classList.add('active');
+
+    if (name === 'batch') {
+      buildFlow('flow-batch', BATCH, 'info-batch', false);
+      animateFlow('flow-batch', BATCH, 'stats-batch');
+    } else if (name === 'rt') {
+      buildFlow('flow-rt', REALTIME, 'info-rt', false);
+      animateFlow('flow-rt', REALTIME, 'stats-rt');
+    } else if (name === 'ai') {
+      buildFlow('flow-ai', AI, 'info-ai', false);
+      animateFlow('flow-ai', AI, 'stats-ai');
+    } else if (name === 'all') {
+      buildFlow('flow-all-batch', BATCH, null, true);
+      buildFlow('flow-all-rt', REALTIME, null, true);
+      buildFlow('flow-all-ai', AI, null, true);
+      animateFlow('flow-all-batch', BATCH, null, 0);
+      animateFlow('flow-all-rt', REALTIME, null, 100);
+      animateFlow('flow-all-ai', AI, null, 200);
+    }
+    active = name;
+  }
+
+  function resetAll() {
+    ['batch','rt','ai','all'].forEach(v => {
+      document.getElementById(`view-${v}`).classList.remove('active');
+    });
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    active = null;
+  }
+
+  show('all');
+</script>
+</body>
+</html>
