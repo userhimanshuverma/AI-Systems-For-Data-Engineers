@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 03 — The New Stack</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --c-kafka:#00d4ff;
+  --c-flink:#00ff9d;
+  --c-pinot:#7eb8f7;
+  --c-vector:#b07ef7;
+  --c-llm:#f77eb0;
+  --c-orch:#f7d07e;
+  --c-user:#ffffff;
+  --bg:#060810;
+  --panel:#0a0e1a;
+  --border:#1a2040;
+  --glow-blue:0 0 20px rgba(0,212,255,0.4);
+  --glow-green:0 0 20px rgba(0,255,157,0.4);
+  --glow-purple:0 0 20px rgba(176,126,247,0.4);
+  --glow-pink:0 0 20px rgba(247,126,176,0.4);
+  --glow-yellow:0 0 20px rgba(247,208,126,0.4);
+}
+
+body{
+  background:var(--bg);
+  color:#c8d0e8;
+  font-family:'Segoe UI',system-ui,monospace;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── STARFIELD ── */
+#stars{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:0;overflow:hidden}
+.star{position:absolute;background:#fff;border-radius:50%;animation:twinkle var(--d,3s) ease-in-out infinite}
+@keyframes twinkle{0%,100%{opacity:0.1}50%{opacity:var(--op,0.6)}}
+
+/* ── LAYOUT ── */
+.wrapper{position:relative;z-index:1;padding:28px 20px 60px;max-width:1400px;margin:0 auto}
+
+/* ── HEADER ── */
+header{text-align:center;margin-bottom:36px}
+.badge{display:inline-block;padding:4px 14px;border:1px solid #1a2a4a;border-radius:20px;font-size:0.68rem;letter-spacing:0.12em;color:#4a7aaa;text-transform:uppercase;margin-bottom:12px}
+h1{font-size:1.6rem;font-weight:700;color:#fff;letter-spacing:0.04em;margin-bottom:6px}
+h1 span{color:var(--c-kafka)}
+.sub{font-size:0.8rem;color:#3a4a6a;letter-spacing:0.06em}
+
+/* ── CONTROLS ── */
+.controls{display:flex;justify-content:center;gap:10px;margin-bottom:36px;flex-wrap:wrap}
+.btn{padding:9px 20px;border-radius:6px;font-size:0.75rem;font-weight:700;cursor:pointer;border:1px solid #1a2040;background:#0a0e1a;color:#3a4a6a;letter-spacing:0.06em;text-transform:uppercase;transition:all 0.2s}
+.btn:hover{color:#8a9aba;border-color:#2a3060}
+.btn.active-btn{color:#fff;border-color:currentColor}
+.btn.b-write.active-btn{color:var(--c-kafka);box-shadow:var(--glow-blue)}
+.btn.b-read.active-btn{color:var(--c-vector);box-shadow:var(--glow-purple)}
+.btn.b-full.active-btn{color:var(--c-llm);box-shadow:var(--glow-pink)}
+.btn.b-reset{color:#2a3a5a}
+
+/* ── MAIN CANVAS ── */
+.canvas{
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:32px;
+  position:relative;
+  overflow:hidden;
+  min-height:520px;
+}
+.canvas::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--c-kafka),transparent);
+  opacity:0.4;
+}
+
+/* ── GRID LAYOUT ── */
+.stack-grid{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:16px;
+  align-items:start;
+}
+@media(max-width:900px){.stack-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.stack-grid{grid-template-columns:1fr}}
+
+/* ── LAYER CARD ── */
+.layer{
+  border-radius:12px;
+  border:1px solid #1a2040;
+  background:#080c18;
+  padding:18px 14px;
+  position:relative;
+  transition:all 0.3s;
+  cursor:pointer;
+  opacity:0.35;
+  transform:translateY(6px);
+}
+.layer.visible{opacity:1;transform:translateY(0)}
+.layer:hover{border-color:var(--lc,#2a3060);box-shadow:0 0 24px rgba(var(--lr,0,100,200),0.15)}
+.layer.lit{border-color:var(--lc);box-shadow:0 0 30px rgba(var(--lr),0.25),inset 0 0 20px rgba(var(--lr),0.04)}
+
+.layer-num{font-size:0.6rem;letter-spacing:0.14em;text-transform:uppercase;color:#2a3a5a;margin-bottom:8px}
+.layer-icon{font-size:1.8rem;margin-bottom:10px;display:block;filter:drop-shadow(0 0 8px var(--lc,#fff))}
+.layer-name{font-size:0.85rem;font-weight:700;color:var(--lc,#fff);margin-bottom:4px;letter-spacing:0.04em}
+.layer-tool{font-size:0.68rem;color:#3a4a6a;margin-bottom:10px;font-family:monospace}
+.layer-desc{font-size:0.7rem;color:#4a5a7a;line-height:1.5}
+
+/* ── CONNECTOR ARROWS ── */
+.connectors{
+  position:absolute;
+  top:0;left:0;width:100%;height:100%;
+  pointer-events:none;
+}
+
+/* ── FLOW PACKET ── */
+.packet{
+  position:absolute;
+  width:8px;height:8px;
+  border-radius:50%;
+  background:var(--pc,#00d4ff);
+  box-shadow:0 0 12px var(--pc,#00d4ff),0 0 24px var(--pc,#00d4ff);
+  opacity:0;
+  transition:none;
+  z-index:10;
+}
+
+/* ── INFO PANEL ── */
+.info-panel{
+  margin-top:20px;
+  padding:16px 20px;
+  background:#080c18;
+  border:1px solid #1a2040;
+  border-radius:10px;
+  font-size:0.78rem;
+  color:#4a5a7a;
+  min-height:56px;
+  transition:all 0.3s;
+  position:relative;
+}
+.info-panel::before{content:'›  ';color:#2a4a6a;font-size:1rem}
+.info-panel b{color:#8a9aba}
+.info-panel .tag{
+  display:inline-block;padding:2px 8px;border-radius:4px;
+  font-size:0.62rem;font-weight:700;letter-spacing:0.08em;
+  text-transform:uppercase;margin-right:6px;
+  background:#0a1428;border:1px solid #1a2a4a;color:#4a7aaa;
+}
+
+/* ── METRICS BAR ── */
+.metrics{
+  display:grid;
+  grid-template-columns:repeat(5,1fr);
+  gap:12px;
+  margin-top:20px;
+}
+@media(max-width:700px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.metric{
+  background:#080c18;
+  border:1px solid #1a2040;
+  border-radius:8px;
+  padding:12px;
+  text-align:center;
+  opacity:0;
+  transform:translateY(4px);
+  transition:opacity 0.4s,transform 0.4s;
+}
+.metric.show{opacity:1;transform:translateY(0)}
+.metric-val{font-size:1.2rem;font-weight:700;font-family:monospace;line-height:1}
+.metric-lbl{font-size:0.6rem;color:#2a3a5a;margin-top:4px;text-transform:uppercase;letter-spacing:0.08em}
+
+/* ── FLOW LOG ── */
+.flow-log{
+  margin-top:20px;
+  background:#040608;
+  border:1px solid #0e1428;
+  border-radius:10px;
+  padding:14px 16px;
+  font-family:monospace;
+  font-size:0.72rem;
+  max-height:160px;
+  overflow-y:auto;
+  display:none;
+}
+.flow-log.show{display:block}
+.log-line{
+  padding:2px 0;
+  border-bottom:1px solid #0a0e18;
+  color:#2a4a6a;
+  opacity:0;
+  animation:fadein 0.3s forwards;
+}
+.log-line.ok{color:#00ff9d}
+.log-line.info{color:#00d4ff}
+.log-line.warn{color:#f7d07e}
+.log-line.ai{color:#b07ef7}
+@keyframes fadein{to{opacity:1}}
+
+/* ── SCAN LINE ── */
+@keyframes scan{0%{top:-2px}100%{top:100%}}
+.scanline{
+  position:absolute;left:0;right:0;height:2px;
+  background:linear-gradient(90deg,transparent,rgba(0,212,255,0.15),transparent);
+  animation:scan 4s linear infinite;
+  pointer-events:none;
+}
+
+/* ── PULSE RING ── */
+@keyframes ring{0%{transform:scale(1);opacity:0.6}100%{transform:scale(2.5);opacity:0}}
+.ring{
+  position:absolute;
+  border-radius:50%;
+  border:1px solid var(--rc,#00d4ff);
+  animation:ring 1s ease-out forwards;
+  pointer-events:none;
+}
+
+/* ── GRID LINES ── */
+.grid-bg{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  background-image:
+    linear-gradient(rgba(0,212,255,0.02) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(0,212,255,0.02) 1px,transparent 1px);
+  background-size:40px 40px;
+  pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<div id="stars"></div>
+
+<div class="wrapper">
+  <header>
+    <div class="badge">Phase 1 · Day 03</div>
+    <h1>The <span>New Stack</span></h1>
+    <p class="sub">Kafka · Flink · Pinot · Vector DB · LLM · Orchestrator</p>
+  </header>
+
+  <div class="controls">
+    <button class="btn b-write" onclick="runFlow('write')">▶ Write Path — Event Flow</button>
+    <button class="btn b-read"  onclick="runFlow('read')">▶ Read Path — Query Flow</button>
+    <button class="btn b-full"  onclick="runFlow('full')">▶ Full System</button>
+    <button class="btn b-reset" onclick="resetAll()">↺ Reset</button>
+  </div>
+
+  <div class="canvas" id="canvas">
+    <div class="grid-bg"></div>
+    <div class="scanline"></div>
+
+    <div class="stack-grid" id="stack">
+      <!-- cards injected by JS -->
+    </div>
+
+    <svg class="connectors" id="svg-connectors" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:visible"></svg>
+
+    <div class="info-panel" id="info-panel">Hover a layer to inspect it. Click a flow button to animate the data path.</div>
+
+    <div class="metrics" id="metrics">
+      <div class="metric" id="m0"><div class="metric-val" style="color:var(--c-kafka)">—</div><div class="metric-lbl">Events/sec</div></div>
+      <div class="metric" id="m1"><div class="metric-val" style="color:var(--c-flink)">—</div><div class="metric-lbl">Process Lag</div></div>
+      <div class="metric" id="m2"><div class="metric-val" style="color:var(--c-pinot)">—</div><div class="metric-lbl">Query P99</div></div>
+      <div class="metric" id="m3"><div class="metric-val" style="color:var(--c-vector)">—</div><div class="metric-lbl">Vector k</div></div>
+      <div class="metric" id="m4"><div class="metric-val" style="color:var(--c-llm)">—</div><div class="metric-lbl">LLM Latency</div></div>
+    </div>
+
+    <div class="flow-log" id="flow-log"></div>
+  </div>
+</div>
+
+<script>
+// ── STARS ──────────────────────────────────────────────────────────────────
+const starsEl = document.getElementById('stars');
+for(let i=0;i<120;i++){
+  const s=document.createElement('div');
+  s.className='star';
+  const sz=Math.random()*2+0.5;
+  s.style.cssText=`width:${sz}px;height:${sz}px;top:${Math.random()*100}%;left:${Math.random()*100}%;--d:${2+Math.random()*4}s;--op:${0.3+Math.random()*0.7};animation-delay:${Math.random()*4}s`;
+  starsEl.appendChild(s);
+}
+
+// ── LAYER DEFINITIONS ──────────────────────────────────────────────────────
+const LAYERS = [
+  {
+    id:'kafka', num:'Layer 1', icon:'⚡', name:'Apache Kafka',
+    tool:'Streaming Backbone', lc:'#00d4ff', lr:'0,212,255',
+    desc:'Durable, replayable event bus. Every user action becomes an immutable event on a topic partition.',
+    info:'<b>Apache Kafka</b> — The event backbone. Producers publish events; consumers read independently. Retention enables replay. Partitions enable parallelism. <span class="tag">pub/sub</span><span class="tag">durable</span><span class="tag">replayable</span>',
+    metrics:['240K/s','—','—','—','—']
+  },
+  {
+    id:'flink', num:'Layer 1', icon:'🌊', name:'Apache Flink',
+    tool:'Stream Processor', lc:'#00ff9d', lr:'0,255,157',
+    desc:'Processes events in motion. Enriches with metadata, computes session windows, detects anomalies.',
+    info:'<b>Apache Flink</b> — Stateful stream processing. Joins streams, maintains per-key state (RocksDB), computes windowed aggregations. Exactly-once semantics. <span class="tag">stateful</span><span class="tag">windowing</span><span class="tag">exactly-once</span>',
+    metrics:['—','18ms','—','—','—']
+  },
+  {
+    id:'pinot', num:'Layer 2', icon:'🔷', name:'Apache Pinot',
+    tool:'Real-Time OLAP', lc:'#7eb8f7', lr:'126,184,247',
+    desc:'Ingests from Kafka. Serves sub-second SQL on data that is seconds old. Bridges streaming and querying.',
+    info:'<b>Apache Pinot</b> — Real-time OLAP store. Ingests from Kafka via connector. Columnar storage + inverted indexes. P99 query latency &lt;100ms on billions of rows. <span class="tag">columnar</span><span class="tag">sub-second</span><span class="tag">SQL</span>',
+    metrics:['—','—','68ms','—','—']
+  },
+  {
+    id:'vector', num:'Layer 3', icon:'🧠', name:'Vector Store',
+    tool:'Pinecone / Qdrant', lc:'#b07ef7', lr:'176,126,247',
+    desc:'Stores embeddings. Finds semantically similar content given a query vector. Enables RAG.',
+    info:'<b>Vector Store</b> — Semantic retrieval engine. Stores dense vectors (embeddings). ANN search (HNSW) returns top-k similar documents. Supports metadata filtering. <span class="tag">HNSW</span><span class="tag">semantic</span><span class="tag">RAG</span>',
+    metrics:['—','—','—','top-4','—']
+  },
+  {
+    id:'llm', num:'Layer 4', icon:'✨', name:'LLM + RAG',
+    tool:'GPT-4o / Claude', lc:'#f77eb0', lr:'247,126,176',
+    desc:'Receives retrieved context. Reasons over it. Generates responses, decisions, or tool calls.',
+    info:'<b>LLM Reasoning Layer</b> — Receives assembled context (vector chunks + structured metrics). Generates natural language response or structured JSON. Does NOT compute — it reasons. <span class="tag">probabilistic</span><span class="tag">context-bound</span><span class="tag">RAG</span>',
+    metrics:['—','—','—','—','580ms']
+  },
+];
+
+// ── BUILD CARDS ────────────────────────────────────────────────────────────
+const stack = document.getElementById('stack');
+LAYERS.forEach((l,i)=>{
+  const card = document.createElement('div');
+  card.className='layer';
+  card.id=`layer-${l.id}`;
+  card.style.setProperty('--lc',l.lc);
+  card.style.setProperty('--lr',l.lr);
+  card.innerHTML=`
+    <div class="layer-num">${l.num}</div>
+    <span class="layer-icon">${l.icon}</span>
+    <div class="layer-name">${l.name}</div>
+    <div class="layer-tool">${l.tool}</div>
+    <div class="layer-desc">${l.desc}</div>
+  `;
+  card.addEventListener('mouseenter',()=>showInfo(l));
+  stack.appendChild(card);
+  setTimeout(()=>card.classList.add('visible'), i*120);
+});
+
+function showInfo(l){
+  document.getElementById('info-panel').innerHTML=l.info;
+}
+
+// ── METRICS ───────────────────────────────────────────────────────────────
+function setMetrics(vals){
+  vals.forEach((v,i)=>{
+    const m=document.getElementById(`m${i}`);
+    m.querySelector('.metric-val').textContent=v;
+    m.classList.add('show');
+  });
+}
+
+// ── FLOW LOG ──────────────────────────────────────────────────────────────
+const logEl=document.getElementById('flow-log');
+function log(msg,cls='info'){
+  logEl.classList.add('show');
+  const line=document.createElement('div');
+  line.className=`log-line ${cls}`;
+  line.textContent=`[${new Date().toLocaleTimeString()}]  ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop=logEl.scrollHeight;
+}
+function clearLog(){logEl.innerHTML='';logEl.classList.remove('show')}
+
+// ── LIGHT LAYER ───────────────────────────────────────────────────────────
+function lightLayer(id,on=true){
+  const el=document.getElementById(`layer-${id}`);
+  if(el) on ? el.classList.add('lit') : el.classList.remove('lit');
+}
+function resetLayers(){LAYERS.forEach(l=>lightLayer(l.id,false))}
+
+// ── ANIMATED PACKET ───────────────────────────────────────────────────────
+function animatePacket(fromId, toId, color, delay, cb){
+  setTimeout(()=>{
+    const from=document.getElementById(`layer-${fromId}`);
+    const to=document.getElementById(`layer-${toId}`);
+    if(!from||!to) return;
+    const canvas=document.getElementById('canvas');
+    const cr=canvas.getBoundingClientRect();
+    const fr=from.getBoundingClientRect();
+    const tr=to.getBoundingClientRect();
+    const sx=fr.left-cr.left+fr.width/2;
+    const sy=fr.top-cr.top+fr.height/2;
+    const ex=tr.left-cr.left+tr.width/2;
+    const ey=tr.top-cr.top+tr.height/2;
+
+    const p=document.createElement('div');
+    p.className='packet';
+    p.style.setProperty('--pc',color);
+    p.style.left=sx+'px';
+    p.style.top=sy+'px';
+    canvas.appendChild(p);
+
+    const dur=600;
+    const start=performance.now();
+    function step(now){
+      const t=Math.min((now-start)/dur,1);
+      const ease=t<0.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+      p.style.left=(sx+(ex-sx)*ease)+'px';
+      p.style.top=(sy+(ey-sy)*ease)+'px';
+      p.style.opacity=t<0.1?t*10:t>0.9?(1-t)*10:1;
+      if(t<1) requestAnimationFrame(step);
+      else{
+        p.remove();
+        // pulse ring at destination
+        const ring=document.createElement('div');
+        ring.className='ring';
+        ring.style.setProperty('--rc',color);
+        ring.style.width='20px';ring.style.height='20px';
+        ring.style.left=(ex-10)+'px';ring.style.top=(ey-10)+'px';
+        canvas.appendChild(ring);
+        setTimeout(()=>ring.remove(),1000);
+        if(cb) cb();
+      }
+    }
+    requestAnimationFrame(step);
+  }, delay);
+}
+
+// ── FLOW SEQUENCES ────────────────────────────────────────────────────────
+let running=false;
+const btns=document.querySelectorAll('.btn');
+
+function setActiveBtn(cls){
+  btns.forEach(b=>b.classList.remove('active-btn'));
+  if(cls) document.querySelector(`.${cls}`)?.classList.add('active-btn');
+}
+
+function runFlow(type){
+  if(running) return;
+  running=true;
+  resetLayers();
+  clearLog();
+  setActiveBtn(`b-${type}`);
+
+  if(type==='write') writeFlow();
+  else if(type==='read') readFlow();
+  else fullFlow();
+}
+
+function writeFlow(){
+  const seq=[
+    {id:'kafka', color:'#00d4ff', delay:0,   msg:'[KAFKA]   user.events topic — event published (offset=14821)', cls:'info'},
+    {id:'flink', color:'#00ff9d', delay:700,  msg:'[FLINK]   enriching event with user metadata (plan=free, country=US)', cls:'ok'},
+    {id:'pinot', color:'#7eb8f7', delay:1400, msg:'[PINOT]   segment ingested — queryable in ~1s', cls:'info'},
+    {id:'vector',color:'#b07ef7', delay:2100, msg:'[EMBED]   event text → 1536-dim vector → upserted to Qdrant', cls:'ai'},
+  ];
+  const pairs=[['kafka','flink'],['flink','pinot'],['flink','vector']];
+  const colors=['#00d4ff','#7eb8f7','#b07ef7'];
+
+  seq.forEach((s,i)=>{
+    setTimeout(()=>{lightLayer(s.id,true);log(s.msg,s.cls)},s.delay);
+  });
+  animatePacket('kafka','flink','#00d4ff',200);
+  animatePacket('flink','pinot','#7eb8f7',900);
+  animatePacket('flink','vector','#b07ef7',1600);
+
+  setTimeout(()=>{
+    setMetrics(['240K/s','18ms','68ms','top-4','—']);
+    log('[SYSTEM]  Write path complete — data available in Pinot + Vector Store','ok');
+    running=false;
+  },2800);
+}
+
+function readFlow(){
+  const seq=[
+    {id:'vector', delay:0,   msg:'[QUERY]   "Why is user u_001 churning?" — parsing intent + entities', cls:'info'},
+    {id:'vector', delay:600, msg:'[VECTOR]  semantic search → top-4 chunks retrieved (score>0.82)', cls:'ai'},
+    {id:'pinot',  delay:600, msg:'[PINOT]   SELECT metrics WHERE user_id=\'u_001\' → {errors:3, churn_risk:high}', cls:'info'},
+    {id:'llm',    delay:1400,msg:'[LLM]     context assembled (4 chunks + metrics) → reasoning...', cls:'ai'},
+    {id:'llm',    delay:2200,msg:'[OUTPUT]  "User u_001 visited /pricing 6x, hit 3 checkout errors. Churn risk: HIGH."', cls:'ok'},
+  ];
+  seq.forEach(s=>setTimeout(()=>{lightLayer(s.id,true);log(s.msg,s.cls)},s.delay));
+  animatePacket('vector','llm','#b07ef7',700);
+  animatePacket('pinot','llm','#7eb8f7',700);
+  setTimeout(()=>{
+    setMetrics(['—','—','68ms','top-4','580ms']);
+    log('[SYSTEM]  Read path complete — response generated in ~600ms','ok');
+    running=false;
+  },2800);
+}
+
+function fullFlow(){
+  const steps=[
+    {id:'kafka',  delay:0,    msg:'[KAFKA]   Event stream active — 240K events/sec across 12 partitions', cls:'info'},
+    {id:'flink',  delay:600,  msg:'[FLINK]   Stream processor enriching + windowing events', cls:'ok'},
+    {id:'pinot',  delay:1200, msg:'[PINOT]   Real-time segments ingested — SQL queries live', cls:'info'},
+    {id:'vector', delay:1800, msg:'[VECTOR]  Embedding pipeline running — 1.2K docs/min indexed', cls:'ai'},
+    {id:'llm',    delay:2600, msg:'[LLM]     Query received → retrieval → context → response generated', cls:'ai'},
+  ];
+  steps.forEach(s=>setTimeout(()=>{lightLayer(s.id,true);log(s.msg,s.cls)},s.delay));
+  animatePacket('kafka','flink','#00d4ff',200);
+  animatePacket('flink','pinot','#7eb8f7',900);
+  animatePacket('flink','vector','#b07ef7',1500);
+  animatePacket('vector','llm','#b07ef7',2100);
+  animatePacket('pinot','llm','#7eb8f7',2100);
+  setTimeout(()=>{
+    setMetrics(['240K/s','18ms','68ms','top-4','580ms']);
+    log('[SYSTEM]  Full stack operational — all layers healthy','ok');
+    // orchestration note
+    setTimeout(()=>{
+      log('[AIRFLOW] DAG: nightly_batch_features — scheduled 00:00 UTC','warn');
+      log('[AIRFLOW] DAG: embedding_pipeline — triggered by new document event','warn');
+      running=false;
+    },600);
+  },3200);
+}
+
+function resetAll(){
+  running=false;
+  resetLayers();
+  clearLog();
+  setActiveBtn(null);
+  document.getElementById('info-panel').innerHTML='Hover a layer to inspect it. Click a flow button to animate the data path.';
+  document.querySelectorAll('.metric').forEach(m=>{
+    m.classList.remove('show');
+    m.querySelector('.metric-val').textContent='—';
+  });
+}
+</script>
+</body>
+</html>
