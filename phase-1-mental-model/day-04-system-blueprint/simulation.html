@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 04 — System Blueprint</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#04060f;
+  --panel:#070b18;
+  --border:#0e1830;
+  --kafka:#00d4ff;
+  --flink:#00ff9d;
+  --pinot:#4a9eff;
+  --vector:#a855f7;
+  --llm:#f472b6;
+  --api:#fbbf24;
+  --orch:#6b7280;
+  --src:#94a3b8;
+}
+body{background:var(--bg);color:#94a3b8;font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+
+/* ── GRID BG ── */
+body::before{
+  content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(0,212,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,212,255,.025) 1px,transparent 1px);
+  background-size:48px 48px;pointer-events:none;z-index:0;
+}
+
+.wrap{position:relative;z-index:1;padding:28px 24px 64px;max-width:1300px;margin:0 auto}
+
+/* ── HEADER ── */
+header{text-align:center;margin-bottom:32px}
+.eyebrow{font-size:.65rem;letter-spacing:.18em;color:#1e3a5f;text-transform:uppercase;margin-bottom:10px}
+h1{font-size:1.55rem;font-weight:700;color:#e2e8f0;letter-spacing:.03em;margin-bottom:6px}
+h1 em{font-style:normal;color:var(--kafka)}
+.tagline{font-size:.78rem;color:#1e3a5f;letter-spacing:.06em}
+
+/* ── TABS ── */
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:28px;flex-wrap:wrap}
+.tab{padding:8px 18px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid #0e1830;background:#070b18;color:#1e3a5f;transition:all .2s}
+.tab:hover{color:#4a6a9a;border-color:#1e3a5f}
+.tab.on{color:#fff;border-color:var(--tc,#00d4ff);box-shadow:0 0 16px rgba(var(--trgb,0,212,255),.3)}
+
+/* ── MAIN BOARD ── */
+.board{
+  background:var(--panel);border:1px solid var(--border);border-radius:16px;
+  padding:28px;position:relative;overflow:hidden;min-height:600px;
+}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--kafka),transparent);opacity:.3}
+
+/* ── SYSTEM DIAGRAM ── */
+.diagram{display:flex;flex-direction:column;gap:0;align-items:center;position:relative}
+
+/* row of nodes */
+.row{display:flex;justify-content:center;gap:16px;width:100%;flex-wrap:wrap;margin:8px 0}
+
+/* node card */
+.node{
+  border-radius:10px;border:1px solid #0e1830;background:#040810;
+  padding:14px 16px;min-width:140px;max-width:180px;text-align:center;
+  cursor:pointer;transition:all .25s;position:relative;
+  opacity:.4;transform:translateY(6px);
+}
+.node.in{opacity:1;transform:translateY(0)}
+.node:hover,.node.active{
+  border-color:var(--nc,#00d4ff);
+  box-shadow:0 0 24px rgba(var(--nrgb,0,212,255),.2),inset 0 0 16px rgba(var(--nrgb,0,212,255),.04);
+}
+.node.active{opacity:1}
+.node.pulse-node{animation:nodepulse .6s ease-out}
+@keyframes nodepulse{0%{box-shadow:0 0 0 0 rgba(var(--nrgb,0,212,255),.6)}100%{box-shadow:0 0 0 20px rgba(var(--nrgb,0,212,255),0)}}
+
+.n-icon{font-size:1.5rem;margin-bottom:6px;display:block;filter:drop-shadow(0 0 6px var(--nc,#00d4ff))}
+.n-label{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#00d4ff);margin-bottom:3px}
+.n-name{font-size:.82rem;font-weight:600;color:#c8d0e8;margin-bottom:2px}
+.n-sub{font-size:.65rem;color:#1e3a5f}
+
+/* connector row */
+.conn-row{display:flex;justify-content:center;align-items:center;gap:16px;height:32px;width:100%}
+.conn{width:2px;height:100%;background:linear-gradient(to bottom,#0e1830,#1e3a5f);position:relative;opacity:0;transition:opacity .3s}
+.conn.show{opacity:1}
+.conn::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid #1e3a5f}
+
+/* ── PACKET ANIMATION ── */
+.pkt{position:absolute;width:7px;height:7px;border-radius:50%;pointer-events:none;z-index:20;opacity:0}
+
+/* ── INFO PANEL ── */
+.info{
+  margin-top:20px;padding:14px 18px;background:#040810;border:1px solid #0e1830;
+  border-radius:10px;font-size:.78rem;color:#3a5a7a;min-height:52px;transition:all .3s;
+  line-height:1.6;
+}
+.info b{color:#8ab0d0}
+.info .chip{display:inline-block;padding:1px 7px;border-radius:4px;font-size:.6rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:#0a1428;border:1px solid #1a2a4a;color:#4a7aaa;margin:0 2px}
+
+/* ── METRICS ── */
+.metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-top:16px}
+@media(max-width:800px){.metrics{grid-template-columns:repeat(3,1fr)}}
+.met{background:#040810;border:1px solid #0e1830;border-radius:8px;padding:10px;text-align:center;opacity:0;transform:translateY(4px);transition:opacity .4s,transform .4s}
+.met.in{opacity:1;transform:translateY(0)}
+.met-v{font-size:1.1rem;font-weight:700;font-family:monospace;line-height:1}
+.met-l{font-size:.58rem;color:#1e3a5f;margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+
+/* ── LOG ── */
+.log{
+  margin-top:16px;background:#020408;border:1px solid #0a1020;border-radius:10px;
+  padding:12px 14px;font-family:monospace;font-size:.7rem;max-height:150px;overflow-y:auto;
+  display:none;
+}
+.log.show{display:block}
+.ll{padding:2px 0;border-bottom:1px solid #080e18;opacity:0;animation:fi .3s forwards}
+@keyframes fi{to{opacity:1}}
+.ll.k{color:var(--kafka)}.ll.f{color:var(--flink)}.ll.p{color:var(--pinot)}
+.ll.v{color:var(--vector)}.ll.l{color:var(--llm)}.ll.a{color:var(--api)}
+.ll.ok{color:#22c55e}.ll.w{color:var(--orch)}
+
+/* ── SCANLINE ── */
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,212,255,.12),transparent);animation:sc 5s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Phase 1 · Day 04</div>
+    <h1><em>System Blueprint</em></h1>
+    <p class="tagline">User Activity Intelligence System — Full Architecture</p>
+  </header>
+
+  <div class="tabs" id="tabs">
+    <button class="tab" style="--tc:var(--kafka);--trgb:0,212,255"   onclick="run('write')">▶ Write Path</button>
+    <button class="tab" style="--tc:var(--vector);--trgb:168,85,247" onclick="run('read')">▶ Query Path</button>
+    <button class="tab" style="--tc:var(--llm);--trgb:244,114,182"   onclick="run('full')">▶ Full System</button>
+    <button class="tab" style="--tc:var(--orch);--trgb:107,114,128"  onclick="resetAll()">↺ Reset</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="diagram" id="diagram"></div>
+    <div class="info" id="info">Click a component to inspect it. Use the flow buttons to animate data paths.</div>
+    <div class="metrics" id="metrics"></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+// ── NODE DEFINITIONS ──────────────────────────────────────────────────────
+const NODES = {
+  src:    {icon:'📡', label:'Sources',    name:'Data Sources',       sub:'App · Services · Docs',    nc:'#94a3b8', nrgb:'148,163,184',
+           info:'<b>Data Sources</b> — Web/mobile app events, backend service events, support documents. Every user action is a signal. <span class="chip">events</span><span class="chip">documents</span>'},
+  kafka:  {icon:'⚡', label:'Layer 1',    name:'Apache Kafka',        sub:'Streaming Backbone',       nc:'#00d4ff', nrgb:'0,212,255',
+           info:'<b>Apache Kafka</b> — Durable, replayable event bus. Topics: user.events (12 partitions), system.errors (6), support.tickets (3). Decouples producers from consumers. <span class="chip">pub/sub</span><span class="chip">replayable</span><span class="chip">durable</span>'},
+  flink:  {icon:'🌊', label:'Layer 1',    name:'Apache Flink',        sub:'Stream Processor',         nc:'#00ff9d', nrgb:'0,255,157',
+           info:'<b>Apache Flink</b> — Enriches events with user profile data, computes 30-min session windows, detects anomalies. Routes to Pinot and embedding pipeline. <span class="chip">stateful</span><span class="chip">exactly-once</span><span class="chip">windowing</span>'},
+  pinot:  {icon:'🔷', label:'Layer 2',    name:'Apache Pinot',        sub:'Real-Time OLAP',           nc:'#4a9eff', nrgb:'74,158,255',
+           info:'<b>Apache Pinot</b> — Ingests from Kafka. Columnar indexes. Sub-second SQL on data seconds old. Tables: user_events_realtime (7d), user_metrics_daily (2yr). <span class="chip">columnar</span><span class="chip">&lt;100ms</span><span class="chip">SQL</span>'},
+  embed:  {icon:'🔗', label:'Layer 3',    name:'Embedding Pipeline',  sub:'text → vectors',           nc:'#a855f7', nrgb:'168,85,247',
+           info:'<b>Embedding Pipeline</b> — Converts event descriptions and documents to dense vectors using text-embedding-3-small. Triggered by new events and document updates. <span class="chip">1536-dim</span><span class="chip">event-driven</span>'},
+  vector: {icon:'🧠', label:'Layer 3',    name:'Vector Store',        sub:'Qdrant / Pinecone',        nc:'#a855f7', nrgb:'168,85,247',
+           info:'<b>Vector Store</b> — Stores embeddings indexed with HNSW. Returns top-k semantically similar documents given a query vector. Supports metadata filtering. <span class="chip">HNSW</span><span class="chip">semantic</span><span class="chip">RAG</span>'},
+  llm:    {icon:'✨', label:'Layer 4',    name:'LLM + RAG',           sub:'GPT-4o / Claude',          nc:'#f472b6', nrgb:'244,114,182',
+           info:'<b>LLM Reasoning Layer</b> — Receives assembled context (vector chunks + Pinot metrics). Generates explanation, risk score, recommended action. Does NOT compute — it reasons. <span class="chip">probabilistic</span><span class="chip">context-bound</span><span class="chip">~500ms</span>'},
+  api:    {icon:'🔌', label:'Layer 5',    name:'API Layer',           sub:'REST · Auth · Cache',      nc:'#fbbf24', nrgb:'251,191,36',
+           info:'<b>API Layer</b> — Accepts natural language queries. Routes to query pipeline. Returns structured response with evidence and confidence score. Auth + rate limiting + caching. <span class="chip">REST</span><span class="chip">WebSocket</span><span class="chip">cache</span>'},
+  orch:   {icon:'⚙️', label:'Layer 5',    name:'Apache Airflow',      sub:'Orchestration',            nc:'#6b7280', nrgb:'107,114,128',
+           info:'<b>Apache Airflow</b> — Manages all pipelines as DAGs: nightly_feature_compute, embedding_refresh, data_quality_checks, model_eval, pinot_compaction. Retries + SLA alerts. <span class="chip">DAGs</span><span class="chip">retries</span><span class="chip">SLA</span>'},
+};
+
+// ── LAYOUT: rows of node IDs ──────────────────────────────────────────────
+const ROWS = [
+  ['api'],
+  ['llm'],
+  ['pinot','vector'],
+  ['flink','embed'],
+  ['kafka'],
+  ['src'],
+];
+
+// ── BUILD DIAGRAM ─────────────────────────────────────────────────────────
+const diag = document.getElementById('diagram');
+ROWS.forEach((row, ri) => {
+  if (ri > 0) {
+    const cr = document.createElement('div');
+    cr.className = 'conn-row';
+    row.forEach(() => {
+      const c = document.createElement('div');
+      c.className = 'conn';
+      c.id = `conn-${ri}`;
+      cr.appendChild(c);
+    });
+    diag.appendChild(cr);
+  }
+  const r = document.createElement('div');
+  r.className = 'row';
+  row.forEach(id => {
+    const nd = NODES[id];
+    const el = document.createElement('div');
+    el.className = 'node';
+    el.id = `node-${id}`;
+    el.style.setProperty('--nc', nd.nc);
+    el.style.setProperty('--nrgb', nd.nrgb);
+    el.innerHTML = `<span class="n-icon">${nd.icon}</span><div class="n-label">${nd.label}</div><div class="n-name">${nd.name}</div><div class="n-sub">${nd.sub}</div>`;
+    el.addEventListener('click', () => {
+      document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+      el.classList.add('active');
+      document.getElementById('info').innerHTML = nd.info;
+    });
+    r.appendChild(el);
+    setTimeout(() => el.classList.add('in'), ri * 100 + 80);
+  });
+  diag.appendChild(r);
+});
+
+// ── METRICS BAR ───────────────────────────────────────────────────────────
+const METRIC_DEFS = [
+  {v:'240K/s', l:'Events/sec',   c:'var(--kafka)'},
+  {v:'18ms',   l:'Flink lag',    c:'var(--flink)'},
+  {v:'<100ms', l:'Pinot P99',    c:'var(--pinot)'},
+  {v:'top-4',  l:'Vector k',     c:'var(--vector)'},
+  {v:'~580ms', l:'LLM latency',  c:'var(--llm)'},
+  {v:'~600ms', l:'E2E latency',  c:'var(--api)'},
+];
+const mbar = document.getElementById('metrics');
+METRIC_DEFS.forEach((m, i) => {
+  const el = document.createElement('div');
+  el.className = 'met';
+  el.id = `met-${i}`;
+  el.innerHTML = `<div class="met-v" style="color:${m.c}">${m.v}</div><div class="met-l">${m.l}</div>`;
+  mbar.appendChild(el);
+});
+
+function showMetrics() {
+  document.querySelectorAll('.met').forEach((m, i) => {
+    setTimeout(() => m.classList.add('in'), i * 80);
+  });
+}
+
+// ── LOG ───────────────────────────────────────────────────────────────────
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  logEl.classList.add('show');
+  const l = document.createElement('div');
+  l.className = `ll ${cls}`;
+  l.textContent = `[${new Date().toLocaleTimeString()}]  ${msg}`;
+  logEl.appendChild(l);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function clearLog() { logEl.innerHTML = ''; logEl.classList.remove('show'); }
+
+// ── LIGHT NODE ────────────────────────────────────────────────────────────
+function light(id, on = true) {
+  const el = document.getElementById(`node-${id}`);
+  if (!el) return;
+  if (on) { el.classList.add('active', 'pulse-node'); setTimeout(() => el.classList.remove('pulse-node'), 700); }
+  else el.classList.remove('active');
+}
+function resetNodes() { Object.keys(NODES).forEach(id => light(id, false)); }
+
+// ── ANIMATED PACKET ───────────────────────────────────────────────────────
+function packet(fromId, toId, color, delay, cb) {
+  setTimeout(() => {
+    const board = document.getElementById('board');
+    const br = board.getBoundingClientRect();
+    const fe = document.getElementById(`node-${fromId}`);
+    const te = document.getElementById(`node-${toId}`);
+    if (!fe || !te) { if (cb) cb(); return; }
+    const fr = fe.getBoundingClientRect();
+    const tr = te.getBoundingClientRect();
+    const sx = fr.left - br.left + fr.width / 2;
+    const sy = fr.top  - br.top  + fr.height / 2;
+    const ex = tr.left - br.left + tr.width / 2;
+    const ey = tr.top  - br.top  + tr.height / 2;
+
+    const p = document.createElement('div');
+    p.className = 'pkt';
+    p.style.cssText = `background:${color};box-shadow:0 0 10px ${color},0 0 20px ${color};left:${sx}px;top:${sy}px`;
+    board.appendChild(p);
+
+    const dur = 550;
+    const t0 = performance.now();
+    function step(now) {
+      const t = Math.min((now - t0) / dur, 1);
+      const e = t < .5 ? 2*t*t : 1 - Math.pow(-2*t+2,2)/2;
+      p.style.left = (sx + (ex-sx)*e) + 'px';
+      p.style.top  = (sy + (ey-sy)*e) + 'px';
+      p.style.opacity = t < .1 ? t*10 : t > .85 ? (1-t)*6.7 : 1;
+      if (t < 1) requestAnimationFrame(step);
+      else { p.remove(); if (cb) cb(); }
+    }
+    requestAnimationFrame(step);
+  }, delay);
+}
+
+// ── FLOWS ─────────────────────────────────────────────────────────────────
+let running = false;
+
+function run(type) {
+  if (running) return;
+  running = true;
+  resetNodes();
+  clearLog();
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  const idx = ['write','read','full'].indexOf(type);
+  if (idx >= 0) document.querySelectorAll('.tab')[idx].classList.add('on');
+
+  if (type === 'write') writeFlow();
+  else if (type === 'read') readFlow();
+  else fullFlow();
+}
+
+function writeFlow() {
+  const steps = [
+    { id:'src',   delay:0,    msg:'[SOURCE]  User clicks "Upgrade Plan" → event published', cls:'a' },
+    { id:'kafka', delay:600,  msg:'[KAFKA]   user.events topic — partition 7, offset 14821', cls:'k' },
+    { id:'flink', delay:1200, msg:'[FLINK]   Enriched: plan=free, country=US, segment=at_risk', cls:'f' },
+    { id:'pinot', delay:1900, msg:'[PINOT]   Segment ingested — queryable in ~1s', cls:'p' },
+    { id:'embed', delay:1900, msg:'[EMBED]   Event text → 1536-dim vector generated', cls:'v' },
+    { id:'vector',delay:2600, msg:'[VECTOR]  Vector upserted to Qdrant (user_events namespace)', cls:'v' },
+  ];
+  steps.forEach(s => setTimeout(() => { light(s.id); log(s.msg, s.cls); }, s.delay));
+  packet('src','kafka','#00d4ff',200);
+  packet('kafka','flink','#00ff9d',800);
+  packet('flink','pinot','#4a9eff',1500);
+  packet('flink','embed','#a855f7',1500);
+  packet('embed','vector','#a855f7',2200);
+  setTimeout(() => {
+    showMetrics();
+    log('[SYSTEM]  Write path complete — data live in Pinot + Vector Store', 'ok');
+    running = false;
+  }, 3200);
+}
+
+function readFlow() {
+  const steps = [
+    { id:'api',   delay:0,    msg:'[API]     Query: "Why is user u_4821 struggling with checkout?"', cls:'a' },
+    { id:'llm',   delay:500,  msg:'[PARSE]   intent=error_investigation, user_id=u_4821', cls:'l' },
+    { id:'pinot', delay:1000, msg:'[PINOT]   SELECT metrics WHERE user_id=\'u_4821\' → {errors_7d:5, churn_risk:high}', cls:'p' },
+    { id:'vector',delay:1000, msg:'[VECTOR]  Semantic search → top-4 chunks retrieved (score>0.81)', cls:'v' },
+    { id:'llm',   delay:1800, msg:'[LLM]     Context assembled (4 chunks + metrics) → reasoning...', cls:'l' },
+    { id:'api',   delay:2600, msg:'[OUTPUT]  "User u_4821: 5 checkout errors, visited /pricing 4x. Churn risk: HIGH. Escalate."', cls:'ok' },
+  ];
+  steps.forEach(s => setTimeout(() => { light(s.id); log(s.msg, s.cls); }, s.delay));
+  packet('api','llm','#f472b6',200);
+  packet('llm','pinot','#4a9eff',700);
+  packet('llm','vector','#a855f7',700);
+  packet('pinot','llm','#f472b6',1400);
+  packet('vector','llm','#f472b6',1400);
+  packet('llm','api','#fbbf24',2200);
+  setTimeout(() => {
+    showMetrics();
+    log('[SYSTEM]  Query path complete — response in ~600ms', 'ok');
+    running = false;
+  }, 3200);
+}
+
+function fullFlow() {
+  const steps = [
+    { id:'src',   delay:0,    msg:'[SOURCE]  Event stream active — 240K events/sec', cls:'a' },
+    { id:'kafka', delay:500,  msg:'[KAFKA]   12 partitions active across user.events topic', cls:'k' },
+    { id:'flink', delay:1000, msg:'[FLINK]   Enriching + windowing — 18ms processing lag', cls:'f' },
+    { id:'pinot', delay:1600, msg:'[PINOT]   Real-time segments live — SQL queries available', cls:'p' },
+    { id:'embed', delay:1600, msg:'[EMBED]   Embedding pipeline running — 1.2K docs/min', cls:'v' },
+    { id:'vector',delay:2200, msg:'[VECTOR]  Index updated — 847K vectors, HNSW rebuilt', cls:'v' },
+    { id:'api',   delay:2800, msg:'[API]     Query received from support agent', cls:'a' },
+    { id:'llm',   delay:3400, msg:'[LLM]     Context retrieved → response generated in 580ms', cls:'l' },
+    { id:'orch',  delay:4000, msg:'[AIRFLOW] DAG: data_quality_checks — all tables healthy', cls:'w' },
+  ];
+  steps.forEach(s => setTimeout(() => { light(s.id); log(s.msg, s.cls); }, s.delay));
+  packet('src','kafka','#00d4ff',200);
+  packet('kafka','flink','#00ff9d',700);
+  packet('flink','pinot','#4a9eff',1300);
+  packet('flink','embed','#a855f7',1300);
+  packet('embed','vector','#a855f7',1900);
+  packet('api','llm','#f472b6',2500);
+  packet('vector','llm','#a855f7',3000);
+  packet('pinot','llm','#4a9eff',3000);
+  packet('llm','api','#fbbf24',3600);
+  setTimeout(() => {
+    showMetrics();
+    log('[SYSTEM]  Full system operational — all layers healthy', 'ok');
+    running = false;
+  }, 4800);
+}
+
+function resetAll() {
+  running = false;
+  resetNodes();
+  clearLog();
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.getElementById('info').innerHTML = 'Click a component to inspect it. Use the flow buttons to animate data paths.';
+  document.querySelectorAll('.met').forEach(m => m.classList.remove('in'));
+}
+</script>
+</body>
+</html>
