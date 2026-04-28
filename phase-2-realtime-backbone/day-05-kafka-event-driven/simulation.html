@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 05 — Kafka Event-Driven Systems</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --kafka:#00e5ff;--flink:#00ff9d;--pinot:#4d9fff;
+  --vector:#a855f7;--alert:#f59e0b;--src:#64748b;
+  --txt:#94a3b8;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.018) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+/* HEADER */
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:#0e2a4a;text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.45rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--kafka)}
+.sub{font-size:.75rem;color:#0e2a4a;letter-spacing:.06em}
+
+/* CONTROLS */
+.ctrl{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.btn{padding:8px 18px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid #0c1428;background:#060a16;color:#1e3a5f;transition:all .2s}
+.btn:hover{color:#4a7aaa;border-color:#1e3a5f}
+.btn.on{color:#fff}
+.btn.b-single.on{border-color:var(--kafka);box-shadow:0 0 14px rgba(0,229,255,.3);color:var(--kafka)}
+.btn.b-stream.on{border-color:var(--flink);box-shadow:0 0 14px rgba(0,255,157,.3);color:var(--flink)}
+.btn.b-fanout.on{border-color:var(--vector);box-shadow:0 0 14px rgba(168,85,247,.3);color:var(--vector)}
+
+/* BOARD */
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:540px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--kafka),transparent);opacity:.25}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,.1),transparent);animation:sc 6s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+/* PIPELINE LAYOUT */
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:nowrap;padding:20px 0;overflow-x:auto}
+
+/* NODE */
+.node{
+  min-width:110px;max-width:130px;padding:14px 10px;border-radius:10px;
+  border:1px solid #0c1428;background:#040810;text-align:center;
+  cursor:pointer;transition:all .25s;flex-shrink:0;
+  opacity:.35;transform:translateY(5px);
+}
+.node.in{opacity:1;transform:translateY(0)}
+.node:hover,.node.lit{border-color:var(--nc,#00e5ff);box-shadow:0 0 20px rgba(var(--nr,0,229,255),.2),inset 0 0 12px rgba(var(--nr,0,229,255),.04)}
+.node.pulse{animation:np .55s ease-out}
+@keyframes np{0%{box-shadow:0 0 0 0 rgba(var(--nr,0,229,255),.7)}100%{box-shadow:0 0 0 18px rgba(var(--nr,0,229,255),0)}}
+.n-icon{font-size:1.4rem;margin-bottom:6px;display:block;filter:drop-shadow(0 0 5px var(--nc,#00e5ff))}
+.n-lbl{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#00e5ff);margin-bottom:2px}
+.n-name{font-size:.78rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.n-sub{font-size:.6rem;color:#1e3a5f}
+
+/* CONNECTOR */
+.conn{display:flex;align-items:center;flex-shrink:0;width:36px;position:relative}
+.conn-line{width:100%;height:2px;background:linear-gradient(90deg,#0c1428,#1e3a5f);position:relative;overflow:visible}
+.conn-arrow{position:absolute;right:-5px;top:50%;transform:translateY(-50%);border-top:4px solid transparent;border-bottom:4px solid transparent;border-left:7px solid #1e3a5f}
+.conn.lit .conn-line{background:linear-gradient(90deg,var(--cc,#00e5ff),var(--cc,#00e5ff));box-shadow:0 0 8px var(--cc,#00e5ff)}
+.conn.lit .conn-arrow{border-left-color:var(--cc,#00e5ff)}
+
+/* PACKET */
+.pkt{position:absolute;width:8px;height:8px;border-radius:50%;pointer-events:none;z-index:20;opacity:0;top:50%;transform:translateY(-50%)}
+
+/* KAFKA DETAIL */
+.kafka-detail{
+  margin:16px auto 0;max-width:700px;
+  background:#040810;border:1px solid #0c1428;border-radius:10px;padding:14px 16px;
+  display:none;
+}
+.kafka-detail.show{display:block}
+.kd-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--kafka);margin-bottom:10px}
+.partitions{display:flex;gap:10px;flex-wrap:wrap}
+.part{flex:1;min-width:160px;background:#060a16;border:1px solid #0c1428;border-radius:8px;padding:10px}
+.part-label{font-size:.6rem;color:#1e3a5f;margin-bottom:6px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.events-list{display:flex;flex-direction:column;gap:3px}
+.evt-chip{
+  font-size:.6rem;font-family:monospace;padding:2px 6px;border-radius:4px;
+  background:#0a1020;border:1px solid #0e1830;color:#3a5a7a;
+  opacity:0;transform:translateX(-4px);transition:opacity .3s,transform .3s;
+}
+.evt-chip.in{opacity:1;transform:translateX(0)}
+.evt-chip.error{border-color:#7c2d12;color:#f97316}
+.evt-chip.purchase{border-color:#14532d;color:#22c55e}
+
+/* INFO */
+.info{margin-top:14px;padding:12px 16px;background:#040810;border:1px solid #0c1428;border-radius:10px;font-size:.76rem;color:#2a4a6a;min-height:44px;transition:all .3s;line-height:1.6}
+.info b{color:#7a9aba}
+.chip{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.58rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;background:#0a1428;border:1px solid #1a2a4a;color:#3a6a9a;margin:0 2px}
+
+/* LOG */
+.log{margin-top:12px;background:#020408;border:1px solid #080e18;border-radius:10px;padding:10px 12px;font-family:monospace;font-size:.68rem;max-height:140px;overflow-y:auto;display:none}
+.log.show{display:block}
+.ll{padding:2px 0;border-bottom:1px solid #060c14;opacity:0;animation:fi .3s forwards}
+@keyframes fi{to{opacity:1}}
+.ll.k{color:var(--kafka)}.ll.f{color:var(--flink)}.ll.p{color:var(--pinot)}
+.ll.v{color:var(--vector)}.ll.al{color:var(--alert)}.ll.ok{color:#22c55e}.ll.dim{color:#1e3a5f}
+
+/* METRICS */
+.metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:14px}
+@media(max-width:700px){.metrics{grid-template-columns:repeat(2,1fr)}}
+.met{background:#040810;border:1px solid #0c1428;border-radius:8px;padding:10px;text-align:center;opacity:0;transform:translateY(4px);transition:opacity .4s,transform .4s}
+.met.in{opacity:1;transform:translateY(0)}
+.met-v{font-size:1.05rem;font-weight:700;font-family:monospace;line-height:1}
+.met-l{font-size:.58rem;color:#1e3a5f;margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 2 · Day 05</div>
+    <h1>Event-Driven Systems with <span>Kafka</span></h1>
+    <p class="sub">Producer → Topic → Consumer → Processing → Output</p>
+  </header>
+
+  <div class="ctrl">
+    <button class="btn b-single" onclick="run('single')">▶ Single Event</button>
+    <button class="btn b-stream" onclick="run('stream')">▶ Event Stream</button>
+    <button class="btn b-fanout" onclick="run('fanout')">▶ Fan-Out (2 Groups)</button>
+    <button class="btn" onclick="resetAll()">↺ Reset</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+
+    <!-- PIPELINE ROW -->
+    <div class="pipeline" id="pipeline"></div>
+
+    <!-- KAFKA PARTITION DETAIL -->
+    <div class="kafka-detail" id="kafka-detail">
+      <div class="kd-title">Kafka Topic: user.events — Partition Log</div>
+      <div class="partitions" id="partitions"></div>
+    </div>
+
+    <div class="info" id="info">Click a component to inspect it. Use the flow buttons to animate events.</div>
+    <div class="metrics" id="metrics"></div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+// ── NODES ──────────────────────────────────────────────────────────────────
+const NODES = [
+  {id:'src',    icon:'📡', lbl:'Producer',  name:'Web App',          sub:'publishes events',    nc:'#64748b', nr:'100,116,139',
+   info:'<b>Event Producer</b> — The web app publishes an event every time a user does something. Events are immutable facts with a timestamp. <span class="chip">publish</span><span class="chip">key=user_id</span>'},
+  {id:'kafka',  icon:'⚡', lbl:'Broker',    name:'Apache Kafka',     sub:'user.events topic',   nc:'#00e5ff', nr:'0,229,255',
+   info:'<b>Apache Kafka</b> — Receives the event, appends it to the correct partition (based on key hash), assigns an offset. Durable: survives broker restarts. <span class="chip">partition</span><span class="chip">offset</span><span class="chip">durable</span>'},
+  {id:'flink',  icon:'🌊', lbl:'Consumer',  name:'Flink Processor',  sub:'enriches + routes',   nc:'#00ff9d', nr:'0,255,157',
+   info:'<b>Flink Consumer</b> — Reads events within ~10ms of publication. Enriches with user profile. Detects anomalies. Routes to Pinot and embedding pipeline. <span class="chip">enrich</span><span class="chip">stateful</span><span class="chip">route</span>'},
+  {id:'pinot',  icon:'🔷', lbl:'Sink',      name:'Apache Pinot',     sub:'SQL in <100ms',       nc:'#4d9fff', nr:'77,159,255',
+   info:'<b>Apache Pinot</b> — Receives enriched events. Builds columnar indexes. Serves SQL queries in <100ms. Bridges streaming and querying. <span class="chip">columnar</span><span class="chip">real-time</span>'},
+  {id:'vector', icon:'🧠', lbl:'Sink',      name:'Vector Store',     sub:'semantic retrieval',  nc:'#a855f7', nr:'168,85,247',
+   info:'<b>Vector Store</b> — Receives event text descriptions. Embeds them as dense vectors. Enables semantic search for the LLM retrieval layer. <span class="chip">embeddings</span><span class="chip">HNSW</span>'},
+];
+
+const CONNS = [
+  {cc:'#00e5ff'},{cc:'#00ff9d'},{cc:'#4d9fff'},{cc:'#a855f7'}
+];
+
+// ── BUILD PIPELINE ─────────────────────────────────────────────────────────
+const pipe = document.getElementById('pipeline');
+NODES.forEach((n, i) => {
+  if (i > 0) {
+    const c = document.createElement('div');
+    c.className = 'conn';
+    c.id = `conn-${i}`;
+    c.style.setProperty('--cc', CONNS[i-1].cc);
+    c.innerHTML = `<div class="conn-line"><div class="conn-arrow"></div></div>`;
+    pipe.appendChild(c);
+  }
+  const el = document.createElement('div');
+  el.className = 'node';
+  el.id = `node-${n.id}`;
+  el.style.setProperty('--nc', n.nc);
+  el.style.setProperty('--nr', n.nr);
+  el.innerHTML = `<span class="n-icon">${n.icon}</span><div class="n-lbl">${n.lbl}</div><div class="n-name">${n.name}</div><div class="n-sub">${n.sub}</div>`;
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.node').forEach(x => x.classList.remove('lit'));
+    el.classList.add('lit');
+    document.getElementById('info').innerHTML = n.info;
+  });
+  pipe.appendChild(el);
+  setTimeout(() => el.classList.add('in'), i * 100 + 60);
+});
+
+// ── KAFKA PARTITIONS ───────────────────────────────────────────────────────
+const partEl = document.getElementById('partitions');
+for (let p = 0; p < 3; p++) {
+  const d = document.createElement('div');
+  d.className = 'part';
+  d.id = `part-${p}`;
+  d.innerHTML = `<div class="part-label">Partition ${p}</div><div class="events-list" id="plist-${p}"></div>`;
+  partEl.appendChild(d);
+}
+
+let partOffsets = [0, 0, 0];
+const EVENT_TYPES = ['page_view','button_click','server_error','payment_processed','session_end'];
+const USERS = ['u_001','u_002','u_003','u_004'];
+
+function addToPartition(uid, etype) {
+  const p = Math.abs(uid.charCodeAt(uid.length-1) - 48) % 3;
+  const off = partOffsets[p]++;
+  const list = document.getElementById(`plist-${p}`);
+  const chip = document.createElement('div');
+  const isErr = etype === 'server_error';
+  const isPur = etype === 'payment_processed';
+  chip.className = `evt-chip${isErr?' error':isPur?' purchase':''}`;
+  chip.textContent = `off=${off} ${uid}:${etype.slice(0,8)}`;
+  list.appendChild(chip);
+  setTimeout(() => chip.classList.add('in'), 50);
+  if (list.children.length > 5) list.removeChild(list.firstChild);
+  return p;
+}
+
+// ── LOG ────────────────────────────────────────────────────────────────────
+const logEl = document.getElementById('log');
+function log(msg, cls) {
+  logEl.classList.add('show');
+  const l = document.createElement('div');
+  l.className = `ll ${cls}`;
+  l.textContent = `[${new Date().toLocaleTimeString()}]  ${msg}`;
+  logEl.appendChild(l);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function clearLog() { logEl.innerHTML = ''; logEl.classList.remove('show'); }
+
+// ── LIGHT ──────────────────────────────────────────────────────────────────
+function light(id, on=true) {
+  const el = document.getElementById(`node-${id}`);
+  if (!el) return;
+  if (on) { el.classList.add('lit','pulse'); setTimeout(()=>el.classList.remove('pulse'),600); }
+  else el.classList.remove('lit');
+}
+function lightConn(i, on=true) {
+  const el = document.getElementById(`conn-${i}`);
+  if (el) on ? el.classList.add('lit') : el.classList.remove('lit');
+}
+function resetNodes() {
+  NODES.forEach(n => light(n.id, false));
+  for(let i=1;i<=4;i++) lightConn(i,false);
+}
+
+// ── PACKET ─────────────────────────────────────────────────────────────────
+function packet(fromId, toId, color, delay, cb) {
+  setTimeout(() => {
+    const board = document.getElementById('board');
+    const br = board.getBoundingClientRect();
+    const fe = document.getElementById(`node-${fromId}`);
+    const te = document.getElementById(`node-${toId}`);
+    if (!fe || !te) { if(cb) cb(); return; }
+    const fr = fe.getBoundingClientRect();
+    const tr = te.getBoundingClientRect();
+    const sx = fr.left - br.left + fr.width/2;
+    const sy = fr.top  - br.top  + fr.height/2;
+    const ex = tr.left - br.left + tr.width/2;
+    const ey = tr.top  - br.top  + tr.height/2;
+    const p = document.createElement('div');
+    p.className = 'pkt';
+    p.style.cssText = `background:${color};box-shadow:0 0 10px ${color},0 0 20px ${color};left:${sx}px;top:${sy}px`;
+    board.appendChild(p);
+    const dur = 500, t0 = performance.now();
+    function step(now) {
+      const t = Math.min((now-t0)/dur,1);
+      const e = t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+      p.style.left=(sx+(ex-sx)*e)+'px'; p.style.top=(sy+(ey-sy)*e)+'px';
+      p.style.opacity=t<.1?t*10:t>.85?(1-t)*6.7:1;
+      if(t<1) requestAnimationFrame(step);
+      else { p.remove(); if(cb) cb(); }
+    }
+    requestAnimationFrame(step);
+  }, delay);
+}
+
+// ── METRICS ────────────────────────────────────────────────────────────────
+const MDEFS = [
+  {v:'—',l:'Events Published',c:'var(--kafka)'},
+  {v:'—',l:'Partitions',c:'var(--kafka)'},
+  {v:'—',l:'Consumer Groups',c:'var(--flink)'},
+  {v:'—',l:'Pinot Rows',c:'var(--pinot)'},
+  {v:'—',l:'Vectors Indexed',c:'var(--vector)'},
+];
+const mbar = document.getElementById('metrics');
+MDEFS.forEach((m,i) => {
+  const el = document.createElement('div');
+  el.className='met'; el.id=`met-${i}`;
+  el.innerHTML=`<div class="met-v" style="color:${m.c}" id="mv-${i}">${m.v}</div><div class="met-l">${m.l}</div>`;
+  mbar.appendChild(el);
+});
+function setMet(i,v){ document.getElementById(`mv-${i}`).textContent=v; document.getElementById(`met-${i}`).classList.add('in'); }
+
+// ── FLOWS ──────────────────────────────────────────────────────────────────
+let running = false;
+function run(type) {
+  if(running) return; running=true;
+  resetNodes(); clearLog();
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('on'));
+  document.querySelector(`.b-${type}`)?.classList.add('on');
+  document.getElementById('kafka-detail').classList.add('show');
+  if(type==='single') singleFlow();
+  else if(type==='stream') streamFlow();
+  else fanoutFlow();
+}
+
+function singleFlow() {
+  const uid = 'u_001', etype = 'server_error';
+  const steps = [
+    {id:'src',   d:0,   msg:`[PRODUCER]  ${uid} → '${etype}' published to user.events`, cls:'k'},
+    {id:'kafka', d:600, msg:`[KAFKA]     Appended to partition ${Math.abs(uid.charCodeAt(uid.length-1)-48)%3}, offset assigned`, cls:'k'},
+    {id:'flink', d:1200,msg:`[FLINK]     Event consumed in ~12ms — enriching with user profile`, cls:'f'},
+    {id:'pinot', d:1900,msg:`[PINOT]     Enriched row written — queryable in ~1s`, cls:'p'},
+    {id:'vector',d:1900,msg:`[VECTOR]    Event text embedded → upserted to Qdrant`, cls:'v'},
+  ];
+  steps.forEach(s => setTimeout(()=>{ light(s.id); log(s.msg,s.cls); },s.d));
+  setTimeout(()=>addToPartition(uid,etype),600);
+  packet('src','kafka','#00e5ff',200);
+  packet('kafka','flink','#00ff9d',800);
+  packet('flink','pinot','#4d9fff',1500);
+  packet('flink','vector','#a855f7',1500);
+  lightConn(1,true); setTimeout(()=>lightConn(2,true),600); setTimeout(()=>lightConn(3,true),1200); setTimeout(()=>lightConn(4,true),1800);
+  setTimeout(()=>{ setMet(0,'1'); setMet(1,'3'); setMet(2,'1'); setMet(3,'1'); setMet(4,'1'); log('[SYSTEM]  Single event flow complete','ok'); running=false; },2600);
+}
+
+function streamFlow() {
+  const events = [
+    ['u_001','page_view'],['u_002','server_error'],['u_003','button_click'],
+    ['u_001','server_error'],['u_004','payment_processed'],['u_002','server_error'],
+    ['u_003','page_view'],['u_001','session_end'],
+  ];
+  let count=0, pinot=0, vec=0;
+  events.forEach(([uid,etype],i) => {
+    setTimeout(()=>{
+      light('src'); addToPartition(uid,etype);
+      log(`[PRODUCER]  ${uid} → '${etype}'`,'k');
+      count++;
+      setTimeout(()=>{ light('kafka'); lightConn(1,true); },150);
+      setTimeout(()=>{ light('flink'); lightConn(2,true); pinot++; vec++;
+        log(`[FLINK]     enriched → Pinot + Vector`,'f'); },400);
+      setTimeout(()=>{ light('pinot'); light('vector'); lightConn(3,true); lightConn(4,true); },700);
+      if(etype==='server_error') setTimeout(()=>log(`  ⚠️  ALERT: error detected for ${uid}`,'al'),800);
+      packet('src','kafka','#00e5ff',100);
+      packet('kafka','flink','#00ff9d',300);
+      packet('flink','pinot','#4d9fff',600);
+      packet('flink','vector','#a855f7',600);
+    }, i*900);
+  });
+  setTimeout(()=>{ setMet(0,count); setMet(1,'3'); setMet(2,'1'); setMet(3,pinot); setMet(4,vec); log('[SYSTEM]  Stream complete','ok'); running=false; }, events.length*900+400);
+}
+
+function fanoutFlow() {
+  log('[SYSTEM]  Fan-out demo: 1 topic → 2 independent consumer groups','dim');
+  const uid='u_002', etype='server_error';
+  setTimeout(()=>{ light('src'); addToPartition(uid,etype); log(`[PRODUCER]  ${uid} → '${etype}' published`,'k'); packet('src','kafka','#00e5ff',100); },0);
+  setTimeout(()=>{ light('kafka'); lightConn(1,true); log('[KAFKA]     Event stored in partition log','k'); },600);
+  // Consumer group 1: Flink
+  setTimeout(()=>{ light('flink'); lightConn(2,true); log('[GROUP 1]   flink-enrichment: consumed at offset 0 → enriching','f'); packet('kafka','flink','#00ff9d',100); },1200);
+  setTimeout(()=>{ light('pinot'); lightConn(3,true); log('[GROUP 1]   → Pinot row written','p'); packet('flink','pinot','#4d9fff',100); },1900);
+  // Consumer group 2: Alert (independent offset)
+  setTimeout(()=>{ log('[GROUP 2]   alert-service: consumed same event at offset 0 (independent)','al'); packet('kafka','flink','#f59e0b',100); },2400);
+  setTimeout(()=>{ log('[GROUP 2]   → 🔔 Alert fired: server_error threshold reached','al'); },2900);
+  setTimeout(()=>{ log('[SYSTEM]  Both groups read the same event independently','dim'); log('[SYSTEM]  Neither group affects the other\'s offset','dim'); setMet(0,'1'); setMet(1,'3'); setMet(2,'2'); setMet(3,'1'); setMet(4,'0'); log('[SYSTEM]  Fan-out complete','ok'); running=false; },3400);
+}
+
+function resetAll() {
+  running=false; resetNodes(); clearLog();
+  document.querySelectorAll('.btn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('info').innerHTML='Click a component to inspect it. Use the flow buttons to animate events.';
+  document.getElementById('kafka-detail').classList.remove('show');
+  document.querySelectorAll('.met').forEach(m=>m.classList.remove('in'));
+  document.querySelectorAll('.met-v').forEach((m,i)=>m.textContent='—');
+  partOffsets=[0,0,0];
+  for(let p=0;p<3;p++) document.getElementById(`plist-${p}`).innerHTML='';
+}
+</script>
+</body>
+</html>
