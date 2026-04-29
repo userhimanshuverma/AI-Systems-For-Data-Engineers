@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 06 — Event Schema Design</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --bad:#ef4444;--good:#22c55e;--kafka:#00e5ff;
+  --ai:#a855f7;--txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.016) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.016) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+/* HEADER */
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 .g{color:var(--good)} h1 .b{color:var(--bad)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+/* TABS */
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.bad.on{color:var(--bad);border-color:var(--bad);box-shadow:0 0 14px rgba(239,68,68,.25)}
+.tab.good.on{color:var(--good);border-color:var(--good);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.compare.on{color:var(--kafka);border-color:var(--kafka);box-shadow:0 0 14px rgba(0,229,255,.25)}
+
+/* BOARD */
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--kafka),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,.08),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+/* VIEWS */
+.view{display:none}.view.on{display:block}
+
+/* SCHEMA DISPLAY */
+.schema-wrap{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:700px){.schema-wrap{grid-template-columns:1fr}}
+
+.schema-box{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.schema-header{padding:10px 14px;font-size:.7rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:8px}
+.schema-header.bad{background:rgba(239,68,68,.08);color:var(--bad);border-bottom:1px solid rgba(239,68,68,.2)}
+.schema-header.good{background:rgba(34,197,94,.08);color:var(--good);border-bottom:1px solid rgba(34,197,94,.2)}
+.schema-body{padding:14px;font-family:monospace;font-size:.7rem;line-height:1.7;overflow-x:auto;max-height:380px;overflow-y:auto}
+
+/* JSON syntax highlight */
+.jk{color:#7eb8f7}   /* key */
+.jv{color:#f7b07e}   /* string value */
+.jn{color:#b07ef7}   /* number */
+.jb{color:#7ef7a0}   /* bool */
+.jc{color:#3a5a7a;font-style:italic}  /* comment */
+.jmiss{color:var(--bad);text-decoration:line-through;opacity:.6}
+
+/* PIPELINE FLOW */
+.flow{display:flex;align-items:center;justify-content:center;gap:0;margin:20px 0;flex-wrap:nowrap;overflow-x:auto}
+.fnode{min-width:100px;max-width:120px;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;flex-shrink:0;opacity:.4;transform:translateY(4px);transition:all .3s}
+.fnode.in{opacity:1;transform:translateY(0)}
+.fnode.lit-bad{border-color:var(--bad);box-shadow:0 0 16px rgba(239,68,68,.2);opacity:1}
+.fnode.lit-good{border-color:var(--good);box-shadow:0 0 16px rgba(34,197,94,.2);opacity:1}
+.fn-icon{font-size:1.2rem;margin-bottom:4px;display:block}
+.fn-name{font-size:.68rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.fn-sub{font-size:.58rem;color:var(--dim)}
+.farrow{width:28px;height:2px;flex-shrink:0;position:relative}
+.farrow::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);border-top:3px solid transparent;border-bottom:3px solid transparent;border-left:5px solid #1e3a5f}
+.farrow.bad{background:var(--bad);box-shadow:0 0 6px var(--bad)}
+.farrow.bad::after{border-left-color:var(--bad)}
+.farrow.good{background:var(--good);box-shadow:0 0 6px var(--good)}
+.farrow.good::after{border-left-color:var(--good)}
+
+/* OUTPUT BOXES */
+.outputs{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+@media(max-width:700px){.outputs{grid-template-columns:1fr}}
+.out-box{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.out-header{padding:8px 12px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.out-header.bad{background:rgba(239,68,68,.06);color:var(--bad);border-bottom:1px solid rgba(239,68,68,.15)}
+.out-header.good{background:rgba(34,197,94,.06);color:var(--good);border-bottom:1px solid rgba(34,197,94,.15)}
+.out-body{padding:12px;font-size:.72rem;line-height:1.6;color:#4a6a8a;min-height:80px}
+.out-body.bad-result{color:#7a3a3a}
+.out-body.good-result{color:#3a7a5a}
+.out-body b{color:#8ab0d0}
+
+/* COMPARE TABLE */
+.compare-table{width:100%;border-collapse:collapse;font-size:.74rem;margin-top:16px}
+.compare-table th{padding:10px 14px;text-align:left;font-size:.65rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.compare-table td{padding:10px 14px;border-bottom:1px solid #080e18;vertical-align:top}
+.compare-table tr:last-child td{border-bottom:none}
+.compare-table td:first-child{color:var(--dim);font-weight:600;font-size:.65rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.bad-cell{color:var(--bad)}
+.good-cell{color:var(--good)}
+
+/* FIELD DIFF */
+.field-diff{margin-top:16px}
+.fd-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.fd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:600px){.fd-grid{grid-template-columns:1fr}}
+.fd-col{background:#040810;border:1px solid var(--border);border-radius:8px;padding:12px}
+.fd-col-title{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+.fd-col-title.bad{color:var(--bad)}.fd-col-title.good{color:var(--good)}
+.fd-field{font-size:.68rem;font-family:monospace;padding:3px 0;border-bottom:1px solid #080e18;display:flex;align-items:center;gap:6px}
+.fd-field:last-child{border-bottom:none}
+.fd-field .dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot-bad{background:var(--bad)}.dot-good{background:var(--good)}.dot-miss{background:#3a3a3a}
+.fd-field .fname{color:#7a9aba}.fd-field .fval{color:#3a5a7a;margin-left:auto;font-size:.62rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 2 · Day 06</div>
+    <h1>Event Schema Design — <span class="b">Weak</span> vs <span class="g">Strong</span></h1>
+    <p class="sub">How schema quality determines AI output quality</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab bad"     onclick="show('bad')">❌ Weak Schema</button>
+    <button class="tab good"    onclick="show('good')">✅ Strong Schema</button>
+    <button class="tab compare" onclick="show('compare')">⚡ Side-by-Side</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+
+    <!-- BAD VIEW -->
+    <div class="view" id="view-bad">
+      <div class="schema-wrap">
+        <div class="schema-box">
+          <div class="schema-header bad">❌ Weak Event Schema</div>
+          <div class="schema-body" id="bad-json"></div>
+        </div>
+        <div class="schema-box">
+          <div class="schema-header bad" style="color:#f97316;border-color:rgba(249,115,22,.2);background:rgba(249,115,22,.06)">⚠️ Problems</div>
+          <div class="schema-body" id="bad-problems"></div>
+        </div>
+      </div>
+      <div class="flow" id="flow-bad"></div>
+      <div class="outputs" id="outputs-bad"></div>
+    </div>
+
+    <!-- GOOD VIEW -->
+    <div class="view" id="view-good">
+      <div class="schema-wrap">
+        <div class="schema-box">
+          <div class="schema-header good">✅ Strong Event Schema</div>
+          <div class="schema-body" id="good-json"></div>
+        </div>
+        <div class="schema-box">
+          <div class="schema-header good" style="color:#4ade80">🎯 What This Enables</div>
+          <div class="schema-body" id="good-benefits"></div>
+        </div>
+      </div>
+      <div class="flow" id="flow-good"></div>
+      <div class="outputs" id="outputs-good"></div>
+    </div>
+
+    <!-- COMPARE VIEW -->
+    <div class="view" id="view-compare">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th style="color:var(--bad)">❌ Weak Schema</th>
+            <th style="color:var(--good)">✅ Strong Schema</th>
+          </tr>
+        </thead>
+        <tbody id="compare-body"></tbody>
+      </table>
+      <div class="field-diff">
+        <div class="fd-title">Field Coverage Comparison</div>
+        <div class="fd-grid">
+          <div class="fd-col" id="fd-bad"></div>
+          <div class="fd-col" id="fd-good"></div>
+        </div>
+      </div>
+      <div class="outputs" style="margin-top:16px" id="outputs-compare"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+
+const BAD_SCHEMA = [
+  '{',
+  '  <jk>"uid"</jk>: <jv>"u_4821"</jv>,          <jc>// ❌ inconsistent name (should be user_id)</jc>',
+  '  <jk>"evt"</jk>: <jv>"click"</jv>,            <jc>// ❌ too vague — click on what?</jc>',
+  '  <jk>"t"</jk>: <jn>1714225921</jn>            <jc>// ❌ Unix timestamp, no timezone</jc>',
+  '}',
+];
+
+const GOOD_SCHEMA = [
+  '{',
+  '  <jk>"event_id"</jk>:       <jv>"evt_a1b2c3d4"</jv>,',
+  '  <jk>"schema_version"</jk>: <jv>"1.0"</jv>,',
+  '  <jk>"event_type"</jk>:     <jv>"ui.button_click"</jv>,',
+  '  <jk>"user_id"</jk>:        <jv>"u_4821"</jv>,',
+  '  <jk>"session_id"</jk>:     <jv>"sess_9x8y7z"</jv>,',
+  '  <jk>"ts"</jk>:             <jv>"2026-04-27T14:32:01.412Z"</jv>,',
+  '  <jk>"context"</jk>: {',
+  '    <jk>"page"</jk>:         <jv>"/pricing"</jv>,',
+  '    <jk>"element_id"</jk>:   <jv>"cta_upgrade_plan"</jv>,',
+  '    <jk>"element_text"</jk>: <jv>"Upgrade to Pro"</jv>,',
+  '    <jk>"referrer"</jk>:     <jv>"/home"</jv>',
+  '  },',
+  '  <jk>"device"</jk>: {',
+  '    <jk>"type"</jk>:         <jv>"mobile"</jv>,',
+  '    <jk>"os"</jk>:           <jv>"iOS 17"</jv>,',
+  '    <jk>"browser"</jk>:      <jv>"Safari"</jv>',
+  '  },',
+  '  <jk>"user_properties"</jk>: {',
+  '    <jk>"plan"</jk>:            <jv>"free"</jv>,',
+  '    <jk>"country"</jk>:         <jv>"US"</jv>,',
+  '    <jk>"signup_days_ago"</jk>: <jn>45</jn>,',
+  '    <jk>"segment"</jk>:         <jv>"at_risk"</jv>',
+  '  }',
+  '}',
+];
+
+const BAD_PROBLEMS = [
+  '<span style="color:#ef4444">❌ Inconsistent naming</span>',
+  '<span style="color:#6b7280;font-size:.68rem">uid vs user_id — breaks Pinot schema and embedding consistency</span>',
+  '',
+  '<span style="color:#ef4444">❌ Vague event type</span>',
+  '<span style="color:#6b7280;font-size:.68rem">"click" — click on what? On which page? What element?</span>',
+  '',
+  '<span style="color:#ef4444">❌ Unix timestamp</span>',
+  '<span style="color:#6b7280;font-size:.68rem">No timezone. Ambiguous. Requires conversion everywhere.</span>',
+  '',
+  '<span style="color:#ef4444">❌ No context fields</span>',
+  '<span style="color:#6b7280;font-size:.68rem">No page, element, device, user state. Cannot filter or enrich.</span>',
+  '',
+  '<span style="color:#ef4444">❌ No schema version</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Schema changes will silently break all consumers.</span>',
+  '',
+  '<span style="color:#ef4444">❌ No session_id</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Cannot reconstruct user journey within a session.</span>',
+];
+
+const GOOD_BENEFITS = [
+  '<span style="color:#22c55e">✅ Globally unique event_id</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Enables deduplication if producer retries.</span>',
+  '',
+  '<span style="color:#22c55e">✅ Namespaced event_type</span>',
+  '<span style="color:#6b7280;font-size:.68rem">ui.button_click — filterable by domain prefix.</span>',
+  '',
+  '<span style="color:#22c55e">✅ ISO 8601 timestamp with UTC</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Unambiguous. Millisecond precision for ordering.</span>',
+  '',
+  '<span style="color:#22c55e">✅ Rich context block</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Page, element, referrer — LLM can reason about intent.</span>',
+  '',
+  '<span style="color:#22c55e">✅ User properties at event time</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Plan captured when event occurred — historically accurate.</span>',
+  '',
+  '<span style="color:#22c55e">✅ schema_version field</span>',
+  '<span style="color:#6b7280;font-size:.68rem">Consumers can handle v1.0 and v1.1 events gracefully.</span>',
+];
+
+const FLOW_NODES = [
+  {id:'src',  icon:'📡', name:'Producer',    sub:'publishes event'},
+  {id:'val',  icon:'🔍', name:'Validator',   sub:'checks schema'},
+  {id:'kfk',  icon:'⚡', name:'Kafka',       sub:'stores event'},
+  {id:'emb',  icon:'🧠', name:'Embedding',   sub:'text → vector'},
+  {id:'llm',  icon:'✨', name:'LLM',         sub:'reasons over context'},
+];
+
+const COMPARE_ROWS = [
+  ['Field count',       '3 fields',                    '20+ fields'],
+  ['Event type',        '"click" (vague)',              '"ui.button_click" (namespaced)'],
+  ['Timestamp',         'Unix integer (no timezone)',   'ISO 8601 UTC with ms'],
+  ['User identifier',   '"uid" (inconsistent)',         '"user_id" (consistent)'],
+  ['Page context',      'Missing',                      '"/pricing" (present)'],
+  ['Element context',   'Missing',                      '"cta_upgrade_plan" (present)'],
+  ['Device info',       'Missing',                      'mobile, iOS 17, Safari'],
+  ['User state',        'Missing',                      'plan, country, segment'],
+  ['Session tracking',  'Missing',                      'session_id present'],
+  ['Schema version',    'Missing',                      '"1.0" (present)'],
+  ['Embedding quality', 'Generic — poor retrieval',     'Specific — precise retrieval'],
+  ['LLM output',        'Insufficient context',         'Actionable explanation'],
+];
+
+const BAD_FIELDS = [
+  {name:'"uid"',  val:'inconsistent name', dot:'dot-bad'},
+  {name:'"evt"',  val:'too vague',         dot:'dot-bad'},
+  {name:'"t"',    val:'unix, no timezone', dot:'dot-bad'},
+  {name:'page',   val:'MISSING',           dot:'dot-miss'},
+  {name:'element',val:'MISSING',           dot:'dot-miss'},
+  {name:'device', val:'MISSING',           dot:'dot-miss'},
+  {name:'plan',   val:'MISSING',           dot:'dot-miss'},
+  {name:'session',val:'MISSING',           dot:'dot-miss'},
+  {name:'version',val:'MISSING',           dot:'dot-miss'},
+];
+
+const GOOD_FIELDS = [
+  {name:'"event_id"',       val:'unique, dedup',    dot:'dot-good'},
+  {name:'"schema_version"', val:'safe evolution',   dot:'dot-good'},
+  {name:'"event_type"',     val:'namespaced',       dot:'dot-good'},
+  {name:'"user_id"',        val:'consistent',       dot:'dot-good'},
+  {name:'"session_id"',     val:'journey tracking', dot:'dot-good'},
+  {name:'"ts"',             val:'ISO 8601 UTC',     dot:'dot-good'},
+  {name:'"context.page"',   val:'where it happened',dot:'dot-good'},
+  {name:'"context.element"',val:'what was clicked', dot:'dot-good'},
+  {name:'"device.type"',    val:'mobile/desktop',   dot:'dot-good'},
+  {name:'"user_properties"',val:'state at event time',dot:'dot-good'},
+];
+
+// ── RENDER ────────────────────────────────────────────────────────────────
+
+function renderJSON(id, lines) {
+  document.getElementById(id).innerHTML = lines.map(l =>
+    `<div style="white-space:pre">${l}</div>`
+  ).join('');
+}
+
+function renderList(id, items) {
+  document.getElementById(id).innerHTML = items.map(i =>
+    i === '' ? '<div style="height:6px"></div>' : `<div style="margin-bottom:2px">${i}</div>`
+  ).join('');
+}
+
+function buildFlow(containerId, cls) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  FLOW_NODES.forEach((n, i) => {
+    if (i > 0) {
+      const a = document.createElement('div');
+      a.className = `farrow ${cls}`;
+      c.appendChild(a);
+    }
+    const el = document.createElement('div');
+    el.className = `fnode`;
+    el.innerHTML = `<span class="fn-icon">${n.icon}</span><div class="fn-name">${n.name}</div><div class="fn-sub">${n.sub}</div>`;
+    c.appendChild(el);
+    setTimeout(() => el.classList.add('in', `lit-${cls}`), i * 120);
+  });
+}
+
+function buildOutputs(containerId, type) {
+  const c = document.getElementById(containerId);
+  const isBad = type === 'bad';
+  c.innerHTML = `
+    <div class="out-box">
+      <div class="out-header ${type}">${isBad ? '❌ Embedding Text' : '✅ Embedding Text'}</div>
+      <div class="out-body ${isBad ? 'bad-result' : 'good-result'}" style="font-family:monospace;font-size:.68rem">
+        ${isBad
+          ? '"User u_4821 clicked at 14:32."<br><br><span style="color:#3a3a3a;font-size:.62rem">→ Generic vector. Matches nothing specifically.</span>'
+          : '"User u_4821 (free plan, US, at_risk, mobile iOS) clicked \'Upgrade to Pro\' button on /pricing at 14:32, arriving from /home."<br><br><span style="color:#1a5a3a;font-size:.62rem">→ Specific vector. Matches "upgrade intent", "pricing page", "mobile free user" queries precisely.</span>'
+        }
+      </div>
+    </div>
+    <div class="out-box">
+      <div class="out-header ${type}">${isBad ? '❌ LLM Response' : '✅ LLM Response'}</div>
+      <div class="out-body ${isBad ? 'bad-result' : 'good-result'}">
+        ${isBad
+          ? '<b>Query:</b> "Why is user u_4821 at risk of churning?"<br><br><b>LLM:</b> "Insufficient context to determine churn risk. The available data only shows a click event with no additional information."'
+          : '<b>Query:</b> "Why is user u_4821 at risk of churning?"<br><br><b>LLM:</b> "User u_4821 (free plan, 45 days since signup, at_risk segment) clicked the Upgrade to Pro button on /pricing via mobile. This is a strong upgrade intent signal. Combined with their at_risk segment classification, recommend triggering an immediate mobile-optimized upgrade offer."'
+        }
+      </div>
+    </div>
+  `;
+}
+
+function buildCompare() {
+  const tbody = document.getElementById('compare-body');
+  tbody.innerHTML = COMPARE_ROWS.map(([dim, bad, good]) => `
+    <tr>
+      <td>${dim}</td>
+      <td class="bad-cell">${bad}</td>
+      <td class="good-cell">${good}</td>
+    </tr>
+  `).join('');
+
+  const fdBad = document.getElementById('fd-bad');
+  fdBad.innerHTML = `<div class="fd-col-title bad">❌ Weak Schema Fields</div>` +
+    BAD_FIELDS.map(f => `<div class="fd-field"><div class="dot ${f.dot}"></div><span class="fname">${f.name}</span><span class="fval">${f.val}</span></div>`).join('');
+
+  const fdGood = document.getElementById('fd-good');
+  fdGood.innerHTML = `<div class="fd-col-title good">✅ Strong Schema Fields</div>` +
+    GOOD_FIELDS.map(f => `<div class="fd-field"><div class="dot ${f.dot}"></div><span class="fname">${f.name}</span><span class="fval">${f.val}</span></div>`).join('');
+
+  buildOutputs('outputs-compare-bad', 'bad');
+  buildOutputs('outputs-compare-good', 'good');
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+
+function show(type) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.tab.${type}`).classList.add('on');
+
+  if (type === 'bad') {
+    renderJSON('bad-json', BAD_SCHEMA);
+    renderList('bad-problems', BAD_PROBLEMS);
+    buildFlow('flow-bad', 'bad');
+    buildOutputs('outputs-bad', 'bad');
+  } else if (type === 'good') {
+    renderJSON('good-json', GOOD_SCHEMA);
+    renderList('good-benefits', GOOD_BENEFITS);
+    buildFlow('flow-good', 'good');
+    buildOutputs('outputs-good', 'good');
+  } else {
+    // compare view needs two output sections
+    document.getElementById('outputs-compare').innerHTML = `
+      <div class="out-box" id="outputs-compare-bad"></div>
+      <div class="out-box" id="outputs-compare-good"></div>
+    `;
+    buildCompare();
+  }
+}
+
+// Init
+show('compare');
+</script>
+</body>
+</html>
