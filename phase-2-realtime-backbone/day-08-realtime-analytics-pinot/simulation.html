@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 08 — Real-Time Analytics with Pinot</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --pinot:#4d9fff;--kafka:#00e5ff;--flink:#f59e0b;
+  --good:#22c55e;--bad:#ef4444;--warn:#f59e0b;
+  --llm:#a855f7;--txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.016) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.016) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--pinot)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-pinot.on{color:var(--pinot);border-color:var(--pinot);box-shadow:0 0 14px rgba(77,159,255,.25)}
+.tab.t-compare.on{color:var(--good);border-color:var(--good);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-queries.on{color:var(--llm);border-color:var(--llm);box-shadow:0 0 14px rgba(168,85,247,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--pinot),transparent);opacity:.25}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(77,159,255,.08),transparent);animation:sc 6s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* PIPELINE */
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 0;overflow-x:auto;flex-wrap:nowrap}
+.pnode{min-width:100px;max-width:130px;padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;flex-shrink:0;opacity:.35;transform:translateY(5px);transition:all .3s;cursor:pointer}
+.pnode.in{opacity:1;transform:translateY(0)}
+.pnode:hover,.pnode.lit{border-color:var(--nc,#4d9fff);box-shadow:0 0 18px rgba(var(--nr,77,159,255),.2)}
+.pnode.pulse{animation:np .55s ease-out}
+@keyframes np{0%{box-shadow:0 0 0 0 rgba(var(--nr,77,159,255),.7)}100%{box-shadow:0 0 0 16px rgba(var(--nr,77,159,255),0)}}
+.pn-icon{font-size:1.3rem;margin-bottom:5px;display:block;filter:drop-shadow(0 0 5px var(--nc,#4d9fff))}
+.pn-lbl{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#4d9fff);margin-bottom:2px}
+.pn-name{font-size:.75rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.pn-sub{font-size:.58rem;color:var(--dim)}
+.arrow{width:28px;height:2px;flex-shrink:0;position:relative;background:var(--pinot);box-shadow:0 0 6px var(--pinot)}
+.arrow::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);border-top:3px solid transparent;border-bottom:3px solid transparent;border-left:5px solid var(--pinot)}
+
+/* QUERY PANEL */
+.query-panel{margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.query-panel{grid-template-columns:1fr}}
+.qbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.qbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.qbox-header.sql{background:rgba(77,159,255,.07);color:var(--pinot);border-bottom:1px solid rgba(77,159,255,.15)}
+.qbox-header.result{background:rgba(34,197,94,.07);color:var(--good);border-bottom:1px solid rgba(34,197,94,.15)}
+.qbox-body{padding:12px 14px;font-family:monospace;font-size:.68rem;line-height:1.7;max-height:200px;overflow-y:auto}
+.sk{color:#7eb8f7}.sv{color:#f7b07e}.sn{color:#b07ef7}.skw{color:#f59e0b}
+
+/* LATENCY METER */
+.latency-bar{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.lat-box{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center}
+.lat-val{font-size:1.3rem;font-weight:700;font-family:monospace;line-height:1}
+.lat-lbl{font-size:.6rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+.lat-bar-wrap{margin-top:8px;height:4px;background:#0c1428;border-radius:2px;overflow:hidden}
+.lat-bar-fill{height:100%;border-radius:2px;transition:width 1s ease}
+
+/* COMPARE TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.gc{color:var(--good)}.bc{color:var(--bad)}.wc{color:var(--warn)}
+
+/* QUERY RUNNER */
+.query-runner{margin-top:14px}
+.qr-title{font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:10px}
+.qr-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.qr-btn{padding:7px 14px;border-radius:6px;font-size:.68rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s;letter-spacing:.04em}
+.qr-btn:hover{color:var(--pinot);border-color:var(--pinot)}
+.qr-btn.active{color:var(--pinot);border-color:var(--pinot);box-shadow:0 0 10px rgba(77,159,255,.2)}
+.qr-result{border-radius:10px;border:1px solid var(--border);background:#040810;padding:14px;font-family:monospace;font-size:.7rem;min-height:80px;color:#3a5a7a;line-height:1.7}
+.qr-result .row{padding:2px 0;border-bottom:1px solid #080e18;display:flex;gap:12px}
+.qr-result .row:last-child{border-bottom:none}
+.qr-result .col{color:#7a9aba}.qr-result .val{color:#c8d0e8}
+.qr-result .alert{color:var(--bad)}.qr-result .ok{color:var(--good)}
+.latency-badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:.6rem;font-weight:700;background:rgba(77,159,255,.1);border:1px solid rgba(77,159,255,.2);color:var(--pinot);margin-bottom:8px}
+
+/* PACKET */
+.pkt{position:absolute;width:7px;height:7px;border-radius:50%;pointer-events:none;z-index:20;opacity:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 2 · Day 08</div>
+    <h1>Real-Time Analytics with <span>Apache Pinot</span></h1>
+    <p class="sub">Sub-second SQL on data that's seconds old</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-pinot"   onclick="show('pinot')">▶ Pinot Pipeline</button>
+    <button class="tab t-compare" onclick="show('compare')">⚡ With vs Without</button>
+    <button class="tab t-queries" onclick="show('queries')">🔍 Live Queries</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+
+    <!-- PINOT VIEW -->
+    <div class="view" id="view-pinot">
+      <div class="pipeline" id="pipe-pinot"></div>
+      <div class="query-panel" id="pinot-panel"></div>
+      <div class="latency-bar" id="latency-bar"></div>
+    </div>
+
+    <!-- COMPARE VIEW -->
+    <div class="view" id="view-compare">
+      <table class="cmp-table">
+        <thead><tr><th>Dimension</th><th style="color:var(--bad)">❌ Kafka Direct</th><th style="color:var(--warn)">⚠️ Batch Warehouse</th><th style="color:var(--good)">✅ Apache Pinot</th></tr></thead>
+        <tbody id="cmp-body"></tbody>
+      </table>
+      <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px" id="compare-cards"></div>
+    </div>
+
+    <!-- QUERIES VIEW -->
+    <div class="view" id="view-queries">
+      <div class="query-runner">
+        <div class="qr-title">Run a Pinot Query</div>
+        <div class="qr-btns" id="qr-btns"></div>
+        <div class="qr-result" id="qr-result">Select a query above to execute it.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── PIPELINE NODES ─────────────────────────────────────────────────────────
+const PIPE_NODES = [
+  {id:'kfk', icon:'⚡', lbl:'Kafka',    name:'user.events.enriched', sub:'12 partitions',    nc:'#00e5ff',nr:'0,229,255'},
+  {id:'con', icon:'🔌', lbl:'Connector',name:'Pinot RT Connector',   sub:'reads from Kafka', nc:'#f59e0b',nr:'245,158,11'},
+  {id:'pin', icon:'🔷', lbl:'Pinot',    name:'Real-Time Table',      sub:'data in ~1s',      nc:'#4d9fff',nr:'77,159,255'},
+  {id:'brk', icon:'🔀', lbl:'Broker',   name:'Pinot Broker',         sub:'SQL router',       nc:'#4d9fff',nr:'77,159,255'},
+  {id:'llm', icon:'✨', lbl:'LLM',      name:'AI Retrieval',         sub:'structured context',nc:'#a855f7',nr:'168,85,247'},
+];
+
+function buildPipeline(containerId, nodes) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  nodes.forEach((n, i) => {
+    if (i > 0) {
+      const a = document.createElement('div');
+      a.className = 'arrow';
+      c.appendChild(a);
+    }
+    const el = document.createElement('div');
+    el.className = 'pnode';
+    el.style.setProperty('--nc', n.nc);
+    el.style.setProperty('--nr', n.nr);
+    el.innerHTML = `<span class="pn-icon">${n.icon}</span><div class="pn-lbl">${n.lbl}</div><div class="pn-name">${n.name}</div><div class="pn-sub">${n.sub}</div>`;
+    c.appendChild(el);
+    setTimeout(() => el.classList.add('in', 'lit', 'pulse'), i * 150);
+  });
+}
+
+// ── PINOT PANEL ────────────────────────────────────────────────────────────
+function buildPinotPanel() {
+  document.getElementById('pinot-panel').innerHTML = `
+    <div class="qbox">
+      <div class="qbox-header sql">📋 Sample Query</div>
+      <div class="qbox-body"><pre style="white-space:pre-wrap"><span class="skw">SELECT</span> <span class="sk">user_id</span>, <span class="sk">error_rate</span>, <span class="sk">intent_score</span>
+<span class="skw">FROM</span>   <span class="sv">user_events_realtime</span>
+<span class="skw">WHERE</span>  <span class="sk">churn_risk</span> = <span class="sn">true</span>
+  <span class="skw">AND</span>  <span class="sk">ts</span> > <span class="sv">ago('1h')</span>
+<span class="skw">ORDER BY</span> <span class="sk">error_rate</span> <span class="skw">DESC</span>
+<span class="skw">LIMIT</span>  <span class="sn">10</span></pre></div>
+    </div>
+    <div class="qbox">
+      <div class="qbox-header result">⚡ Result (68ms)</div>
+      <div class="qbox-body">
+        <div style="color:#3a5a7a;margin-bottom:8px;font-size:.65rem">3 at-risk users found</div>
+        <div style="color:#ef4444">u_4821 | error_rate=0.40 | intent=0.82 | plan=free</div>
+        <div style="color:#f97316">u_7734 | error_rate=0.33 | intent=0.40 | plan=free</div>
+        <div style="color:#fbbf24">u_3344 | error_rate=0.25 | intent=0.25 | plan=free</div>
+        <div style="color:#1e3a5f;margin-top:8px;font-size:.62rem">→ Passed to LLM as structured context</div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('latency-bar').innerHTML = `
+    <div class="lat-box">
+      <div class="lat-val" style="color:var(--good)">~1s</div>
+      <div class="lat-lbl">Data Freshness</div>
+      <div class="lat-bar-wrap"><div class="lat-bar-fill" style="width:2%;background:var(--good)"></div></div>
+    </div>
+    <div class="lat-box">
+      <div class="lat-val" style="color:var(--pinot)">68ms</div>
+      <div class="lat-lbl">Query P99</div>
+      <div class="lat-bar-wrap"><div class="lat-bar-fill" style="width:7%;background:var(--pinot)"></div></div>
+    </div>
+    <div class="lat-box">
+      <div class="lat-val" style="color:var(--llm)">20+</div>
+      <div class="lat-lbl">Queryable Columns</div>
+      <div class="lat-bar-wrap"><div class="lat-bar-fill" style="width:100%;background:var(--llm)"></div></div>
+    </div>
+  `;
+  setTimeout(() => {
+    document.querySelectorAll('.lat-bar-fill').forEach(b => {
+      const w = b.style.width;
+      b.style.width = '0';
+      setTimeout(() => b.style.width = w, 100);
+    });
+  }, 300);
+}
+
+// ── COMPARE TABLE ──────────────────────────────────────────────────────────
+const CMP_ROWS = [
+  ['Query latency',   '~120ms (grows with topic)', '~2000ms',          '~68ms'],
+  ['Data freshness',  'Real-time',                 '60-90 min stale',  '~1 second'],
+  ['SQL support',     '❌ None',                   '✅ Full',           '✅ Full'],
+  ['GROUP BY',        '❌ Manual code',             '✅ Native',         '✅ Native'],
+  ['Time filters',    '❌ Scan all',                '✅ Indexed',        '✅ Segment pruning'],
+  ['Enriched columns','❌ Raw only',                '✅ If batch loaded','✅ From Flink'],
+  ['Scales with data','❌ Degrades',                '✅ Yes',            '✅ Yes'],
+  ['AI use case',     '❌ Unusable',                '⚠️ Stale answers', '✅ Fresh + fast'],
+];
+
+function buildCompare() {
+  document.getElementById('cmp-body').innerHTML = CMP_ROWS.map(([d,k,b,p]) =>
+    `<tr><td>${d}</td><td class="bc">${k}</td><td class="wc">${b}</td><td class="gc">${p}</td></tr>`
+  ).join('');
+
+  document.getElementById('compare-cards').innerHTML = `
+    <div style="border-radius:10px;border:1px solid rgba(239,68,68,.2);background:rgba(239,68,68,.04);padding:14px">
+      <div style="color:var(--bad);font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">❌ Kafka Direct</div>
+      <div style="font-size:.7rem;color:#7a3a3a;line-height:1.6">No SQL. No aggregations. Must scan all messages. Latency grows with topic size. Unusable for analytical queries at scale.</div>
+    </div>
+    <div style="border-radius:10px;border:1px solid rgba(245,158,11,.2);background:rgba(245,158,11,.04);padding:14px">
+      <div style="color:var(--warn);font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">⚠️ Batch Warehouse</div>
+      <div style="font-size:.7rem;color:#7a5a3a;line-height:1.6">Full SQL but data is 60-90 minutes stale. A user who churned 5 minutes ago looks healthy. Wrong answers with high confidence.</div>
+    </div>
+    <div style="border-radius:10px;border:1px solid rgba(77,159,255,.2);background:rgba(77,159,255,.04);padding:14px">
+      <div style="color:var(--pinot);font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px">✅ Apache Pinot</div>
+      <div style="font-size:.7rem;color:#3a5a7a;line-height:1.6">Full SQL + data queryable in ~1 second + sub-100ms query latency. The only option that satisfies all three requirements.</div>
+    </div>
+  `;
+}
+
+// ── QUERY RUNNER ───────────────────────────────────────────────────────────
+const QUERIES = [
+  {
+    label: 'Error Monitoring',
+    sql: `SELECT user_id, COUNT(*) as errors\nFROM user_events_realtime\nWHERE event_type = 'system.server_error'\n  AND ts > ago('1h')\nGROUP BY user_id\nORDER BY errors DESC LIMIT 5`,
+    latency: 68,
+    rows: [
+      {user_id:'u_4821', errors:5, plan:'free',  risk:'HIGH'},
+      {user_id:'u_7734', errors:3, plan:'free',  risk:'MEDIUM'},
+      {user_id:'u_3344', errors:2, plan:'free',  risk:'MEDIUM'},
+    ],
+  },
+  {
+    label: 'Churn Risk',
+    sql: `SELECT user_id, error_rate, intent_score, plan\nFROM user_events_realtime\nWHERE churn_risk = true\n  AND ts > ago('1h')\nORDER BY error_rate DESC LIMIT 10`,
+    latency: 72,
+    rows: [
+      {user_id:'u_4821', error_rate:'40%', intent_score:0.82, plan:'free'},
+      {user_id:'u_7734', error_rate:'33%', intent_score:0.40, plan:'free'},
+    ],
+  },
+  {
+    label: 'Upgrade Intent',
+    sql: `SELECT user_id, pricing_visits, intent_score\nFROM user_events_realtime\nWHERE intent_score > 0.5\n  AND plan = 'free'\n  AND ts > ago('30m')\nORDER BY intent_score DESC LIMIT 10`,
+    latency: 61,
+    rows: [
+      {user_id:'u_4821', pricing_visits:4, intent_score:0.82},
+      {user_id:'u_7734', pricing_visits:2, intent_score:0.55},
+    ],
+  },
+  {
+    label: 'User Summary (LLM)',
+    sql: `SELECT user_id, MAX(session_errors) as errors,\n       MAX(error_rate) as rate,\n       MAX(intent_score) as intent\nFROM user_events_realtime\nWHERE user_id = 'u_4821'\n  AND ts > ago('7d')\nGROUP BY user_id`,
+    latency: 45,
+    rows: [
+      {user_id:'u_4821', errors:5, rate:'40%', intent:0.82, churn_risk:true},
+    ],
+  },
+  {
+    label: 'Page Error Funnel',
+    sql: `SELECT page, COUNT(*) as errors,\n       COUNT(DISTINCT user_id) as users\nFROM user_events_realtime\nWHERE event_type = 'system.server_error'\n  AND ts > ago('1h')\nGROUP BY page ORDER BY errors DESC`,
+    latency: 55,
+    rows: [
+      {page:'/checkout', errors:12, users:4},
+      {page:'/billing',  errors:3,  users:2},
+      {page:'/settings', errors:1,  users:1},
+    ],
+  },
+];
+
+function buildQueryRunner() {
+  const btns = document.getElementById('qr-btns');
+  btns.innerHTML = '';
+  QUERIES.forEach((q, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'qr-btn';
+    btn.textContent = q.label;
+    btn.onclick = () => runQuery(i, btn);
+    btns.appendChild(btn);
+  });
+}
+
+function runQuery(idx, btn) {
+  document.querySelectorAll('.qr-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const q = QUERIES[idx];
+  const res = document.getElementById('qr-result');
+  res.innerHTML = `<div class="latency-badge">⚡ Executing... ~${q.latency}ms</div>`;
+
+  setTimeout(() => {
+    const rowsHtml = q.rows.map(r => {
+      const cols = Object.entries(r).map(([k,v]) => {
+        const isAlert = (k === 'errors' && v >= 3) || (k === 'churn_risk' && v) || (k === 'risk' && v === 'HIGH');
+        const isOk = (k === 'intent_score' && v > 0.7) || (k === 'risk' && v === 'LOW');
+        const cls = isAlert ? 'alert' : isOk ? 'ok' : '';
+        return `<span class="col">${k}=</span><span class="val ${cls}">${v}</span>`;
+      }).join('  ');
+      return `<div class="row">${cols}</div>`;
+    }).join('');
+
+    res.innerHTML = `
+      <div class="latency-badge">✅ Completed in ${q.latency}ms</div>
+      <div style="font-family:monospace;font-size:.67rem;color:#3a5a7a;margin-bottom:8px;white-space:pre">${q.sql}</div>
+      <div style="border-top:1px solid #0c1428;padding-top:8px">${rowsHtml}</div>
+      <div style="margin-top:8px;font-size:.62rem;color:#1e3a5f">→ ${q.rows.length} row(s) returned | Data age: ~1 second | Passed to LLM as structured context</div>
+    `;
+  }, q.latency);
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+
+  if (type === 'pinot') {
+    buildPipeline('pipe-pinot', PIPE_NODES);
+    buildPinotPanel();
+  } else if (type === 'compare') {
+    buildCompare();
+  } else {
+    buildQueryRunner();
+  }
+}
+
+show('pinot');
+</script>
+</body>
+</html>

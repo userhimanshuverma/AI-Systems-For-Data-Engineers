@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 07 — Stream Processing: Enrichment Layer</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --raw:#ef4444;--enr:#22c55e;--kafka:#00e5ff;
+  --flink:#f59e0b;--pinot:#4d9fff;--vec:#a855f7;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.016) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.016) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+/* HEADER */
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 .hi{color:var(--flink)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+/* TABS */
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.raw.on{color:var(--raw);border-color:var(--raw);box-shadow:0 0 14px rgba(239,68,68,.25)}
+.tab.enr.on{color:var(--enr);border-color:var(--enr);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.cmp.on{color:var(--kafka);border-color:var(--kafka);box-shadow:0 0 14px rgba(0,229,255,.25)}
+
+/* BOARD */
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--kafka),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+/* VIEWS */
+.view{display:none}.view.on{display:block}
+
+/* PIPELINE */
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 0;overflow-x:auto;flex-wrap:nowrap}
+.pnode{min-width:100px;max-width:130px;padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;flex-shrink:0;opacity:.35;transform:translateY(5px);transition:all .3s;cursor:pointer}
+.pnode.in{opacity:1;transform:translateY(0)}
+.pnode:hover,.pnode.lit{border-color:var(--nc,#00e5ff);box-shadow:0 0 18px rgba(var(--nr,0,229,255),.2)}
+.pnode.pulse{animation:np .55s ease-out}
+@keyframes np{0%{box-shadow:0 0 0 0 rgba(var(--nr,0,229,255),.7)}100%{box-shadow:0 0 0 16px rgba(var(--nr,0,229,255),0)}}
+.pn-icon{font-size:1.3rem;margin-bottom:5px;display:block;filter:drop-shadow(0 0 5px var(--nc,#00e5ff))}
+.pn-lbl{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#00e5ff);margin-bottom:2px}
+.pn-name{font-size:.75rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.pn-sub{font-size:.58rem;color:var(--dim)}
+.arrow{width:28px;height:2px;flex-shrink:0;position:relative}
+.arrow::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);border-top:3px solid transparent;border-bottom:3px solid transparent;border-left:5px solid #1e3a5f}
+.arrow.lit-raw{background:var(--raw);box-shadow:0 0 6px var(--raw)}.arrow.lit-raw::after{border-left-color:var(--raw)}
+.arrow.lit-enr{background:var(--enr);box-shadow:0 0 6px var(--enr)}.arrow.lit-enr::after{border-left-color:var(--enr)}
+
+/* EVENT DISPLAY */
+.event-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+@media(max-width:700px){.event-grid{grid-template-columns:1fr}}
+.event-box{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.event-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.event-header.raw{background:rgba(239,68,68,.07);color:var(--raw);border-bottom:1px solid rgba(239,68,68,.15)}
+.event-header.enr{background:rgba(34,197,94,.07);color:var(--enr);border-bottom:1px solid rgba(34,197,94,.15)}
+.event-header.flink{background:rgba(245,158,11,.07);color:var(--flink);border-bottom:1px solid rgba(245,158,11,.15)}
+.event-body{padding:12px 14px;font-family:monospace;font-size:.68rem;line-height:1.7;max-height:320px;overflow-y:auto}
+.jk{color:#7eb8f7}.jv{color:#f7b07e}.jn{color:#b07ef7}.jb{color:#7ef7a0}
+.added{background:rgba(34,197,94,.06);border-left:2px solid var(--enr);padding-left:4px;margin-left:-4px}
+.section-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:6px 0 2px}
+
+/* OUTPUT BOXES */
+.outputs{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+@media(max-width:700px){.outputs{grid-template-columns:1fr}}
+.out-box{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.out-header{padding:8px 12px;font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.out-header.raw{background:rgba(239,68,68,.06);color:var(--raw);border-bottom:1px solid rgba(239,68,68,.12)}
+.out-header.enr{background:rgba(34,197,94,.06);color:var(--enr);border-bottom:1px solid rgba(34,197,94,.12)}
+.out-body{padding:12px;font-size:.72rem;line-height:1.6;min-height:72px}
+.out-body.raw-r{color:#7a3a3a}.out-body.enr-r{color:#3a7a5a}
+
+/* ENRICHMENT STEPS */
+.steps{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.step{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-6px);transition:all .35s}
+.step.in{opacity:1;transform:translateX(0)}
+.step-header{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+.step-body{font-size:.7rem;color:#3a5a7a;line-height:1.5;font-family:monospace}
+.step.s1 .step-header{color:#64748b}
+.step.s2 .step-header{color:#f59e0b}
+.step.s3 .step-header{color:#4d9fff}
+.step.s4 .step-header{color:#a855f7}
+
+/* COMPARE TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.rc{color:var(--raw)}.ec{color:var(--enr)}
+
+/* PACKET */
+.pkt{position:absolute;width:7px;height:7px;border-radius:50%;pointer-events:none;z-index:20;opacity:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 2 · Day 07</div>
+    <h1>Stream Processing — <span class="hi">Enrichment Layer</span></h1>
+    <p class="sub">Raw events → context-rich events → actionable AI</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab raw" onclick="show('raw')">❌ Raw Pipeline</button>
+    <button class="tab enr" onclick="show('enr')">✅ Enriched Pipeline</button>
+    <button class="tab cmp" onclick="show('cmp')">⚡ Side-by-Side</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+
+    <!-- RAW VIEW -->
+    <div class="view" id="view-raw">
+      <div class="pipeline" id="pipe-raw"></div>
+      <div class="event-grid">
+        <div class="event-box">
+          <div class="event-header raw">❌ Raw Event (stored as-is)</div>
+          <div class="event-body" id="raw-event-json"></div>
+        </div>
+        <div class="event-box">
+          <div class="event-header raw" style="color:#f97316;border-color:rgba(249,115,22,.2);background:rgba(249,115,22,.06)">⚠️ What's Missing</div>
+          <div class="event-body" id="raw-missing"></div>
+        </div>
+      </div>
+      <div class="outputs" id="raw-outputs"></div>
+    </div>
+
+    <!-- ENRICHED VIEW -->
+    <div class="view" id="view-enr">
+      <div class="pipeline" id="pipe-enr"></div>
+      <div class="steps" id="enr-steps"></div>
+      <div class="event-grid" style="margin-top:14px">
+        <div class="event-box">
+          <div class="event-header enr">✅ Enriched Event (stored)</div>
+          <div class="event-body" id="enr-event-json"></div>
+        </div>
+        <div class="event-box">
+          <div class="event-header enr" style="color:#4ade80">🎯 What This Enables</div>
+          <div class="event-body" id="enr-enables"></div>
+        </div>
+      </div>
+      <div class="outputs" id="enr-outputs"></div>
+    </div>
+
+    <!-- COMPARE VIEW -->
+    <div class="view" id="view-cmp">
+      <table class="cmp-table">
+        <thead><tr><th>Dimension</th><th style="color:var(--raw)">❌ Raw Pipeline</th><th style="color:var(--enr)">✅ Enriched Pipeline</th></tr></thead>
+        <tbody id="cmp-body"></tbody>
+      </table>
+      <div class="outputs" style="margin-top:14px" id="cmp-outputs"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── PIPELINE NODES ─────────────────────────────────────────────────────────
+const RAW_NODES = [
+  {id:'app',  icon:'📡', lbl:'Producer', name:'Web App',     sub:'raw event',      nc:'#64748b',nr:'100,116,139'},
+  {id:'kfk',  icon:'⚡', lbl:'Kafka',    name:'user.events', sub:'raw stored',     nc:'#00e5ff',nr:'0,229,255'},
+  {id:'pin',  icon:'🔷', lbl:'Pinot',    name:'Storage',     sub:'7 columns only', nc:'#4d9fff',nr:'77,159,255'},
+  {id:'llm',  icon:'✨', lbl:'LLM',      name:'Reasoning',   sub:'weak context',   nc:'#ef4444',nr:'239,68,68'},
+];
+const ENR_NODES = [
+  {id:'app2', icon:'📡', lbl:'Producer', name:'Web App',       sub:'raw event',       nc:'#64748b',nr:'100,116,139'},
+  {id:'kfk2', icon:'⚡', lbl:'Kafka',    name:'user.events',   sub:'raw stream',      nc:'#00e5ff',nr:'0,229,255'},
+  {id:'flk',  icon:'🌊', lbl:'Flink',    name:'Enrichment',    sub:'3 enrichment steps',nc:'#f59e0b',nr:'245,158,11'},
+  {id:'pin2', icon:'🔷', lbl:'Pinot',    name:'Storage',       sub:'20+ columns',     nc:'#4d9fff',nr:'77,159,255'},
+  {id:'llm2', icon:'✨', lbl:'LLM',      name:'Reasoning',     sub:'rich context',    nc:'#22c55e',nr:'34,197,94'},
+];
+
+function buildPipeline(containerId, nodes, cls) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  nodes.forEach((n, i) => {
+    if (i > 0) {
+      const a = document.createElement('div');
+      a.className = `arrow lit-${cls}`;
+      c.appendChild(a);
+    }
+    const el = document.createElement('div');
+    el.className = 'pnode';
+    el.style.setProperty('--nc', n.nc);
+    el.style.setProperty('--nr', n.nr);
+    el.innerHTML = `<span class="pn-icon">${n.icon}</span><div class="pn-lbl">${n.lbl}</div><div class="pn-name">${n.name}</div><div class="pn-sub">${n.sub}</div>`;
+    c.appendChild(el);
+    setTimeout(() => el.classList.add('in', 'lit', 'pulse'), i * 150);
+  });
+}
+
+// ── JSON CONTENT ───────────────────────────────────────────────────────────
+const RAW_JSON = `{
+  <span class="jk">"event_id"</span>:   <span class="jv">"evt_c3d4"</span>,
+  <span class="jk">"event_type"</span>: <span class="jv">"system.server_error"</span>,
+  <span class="jk">"user_id"</span>:    <span class="jv">"u_4821"</span>,
+  <span class="jk">"session_id"</span>: <span class="jv">"sess_9x8y"</span>,
+  <span class="jk">"ts"</span>:         <span class="jv">"2026-04-27T14:35:22Z"</span>,
+  <span class="jk">"context"</span>: {
+    <span class="jk">"page"</span>:       <span class="jv">"/checkout"</span>,
+    <span class="jk">"error_code"</span>: <span class="jn">500</span>
+  }
+}`;
+
+const ENR_JSON = `{
+  <span class="jk">"event_id"</span>:   <span class="jv">"evt_c3d4"</span>,
+  <span class="jk">"event_type"</span>: <span class="jv">"system.server_error"</span>,
+  <span class="jk">"user_id"</span>:    <span class="jv">"u_4821"</span>,
+  <span class="jk">"session_id"</span>: <span class="jv">"sess_9x8y"</span>,
+  <span class="jk">"ts"</span>:         <span class="jv">"2026-04-27T14:35:22Z"</span>,
+  <span class="jk">"context"</span>: { <span class="jk">"page"</span>: <span class="jv">"/checkout"</span>, <span class="jk">"error_code"</span>: <span class="jn">500</span> },
+
+  <span class="added"><span class="section-label">// ✅ STATIC ENRICHMENT (Redis lookup)</span>
+  <span class="jk">"user_profile"</span>: {
+    <span class="jk">"plan"</span>:            <span class="jv">"free"</span>,
+    <span class="jk">"country"</span>:         <span class="jv">"US"</span>,
+    <span class="jk">"segment"</span>:         <span class="jv">"at_risk"</span>,
+    <span class="jk">"lifetime_orders"</span>: <span class="jn">0</span>
+  },</span>
+
+  <span class="added"><span class="section-label">// ✅ BEHAVIORAL ENRICHMENT (session state)</span>
+  <span class="jk">"session_state"</span>: {
+    <span class="jk">"event_count"</span>:     <span class="jn">10</span>,
+    <span class="jk">"error_count"</span>:     <span class="jn">3</span>,
+    <span class="jk">"pricing_visits"</span>:  <span class="jn">3</span>,
+    <span class="jk">"duration_s"</span>:      <span class="jn">501</span>
+  },</span>
+
+  <span class="added"><span class="section-label">// ✅ DERIVED FEATURES (computed signals)</span>
+  <span class="jk">"derived"</span>: {
+    <span class="jk">"error_rate"</span>:      <span class="jn">0.30</span>,
+    <span class="jk">"churn_risk"</span>:      <span class="jb">true</span>,
+    <span class="jk">"intent_score"</span>:    <span class="jn">0.82</span>
+  }</span>
+}`;
+
+const RAW_MISSING = `<div style="color:#ef4444;margin-bottom:4px">❌ User plan / segment</div>
+<div style="color:#3a3a3a;font-size:.65rem;margin-bottom:8px">Cannot filter by plan or segment in Pinot</div>
+<div style="color:#ef4444;margin-bottom:4px">❌ Session context</div>
+<div style="color:#3a3a3a;font-size:.65rem;margin-bottom:8px">No error count, no pricing visits, no duration</div>
+<div style="color:#ef4444;margin-bottom:4px">❌ Derived signals</div>
+<div style="color:#3a3a3a;font-size:.65rem;margin-bottom:8px">No error rate, no churn flag, no intent score</div>
+<div style="color:#ef4444;margin-bottom:4px">❌ Behavioral history</div>
+<div style="color:#3a3a3a;font-size:.65rem">LLM has no sequence context — cannot reason about intent</div>`;
+
+const ENR_ENABLES = `<div style="color:#22c55e;margin-bottom:4px">✅ Pinot query: churn_risk = true</div>
+<div style="color:#3a5a7a;font-size:.65rem;margin-bottom:8px">Find all at-risk users in real-time</div>
+<div style="color:#22c55e;margin-bottom:4px">✅ Pinot query: intent_score > 0.7</div>
+<div style="color:#3a5a7a;font-size:.65rem;margin-bottom:8px">Find users with strong upgrade intent</div>
+<div style="color:#22c55e;margin-bottom:4px">✅ Rich embedding text</div>
+<div style="color:#3a5a7a;font-size:.65rem;margin-bottom:8px">Precise semantic retrieval for LLM context</div>
+<div style="color:#22c55e;margin-bottom:4px">✅ LLM actionable response</div>
+<div style="color:#3a5a7a;font-size:.65rem">Specific evidence → specific recommendation</div>`;
+
+const ENR_STEPS_DATA = [
+  {cls:'s1', label:'Step 1 — Filter', body:'Drop heartbeats, health checks, bot traffic\n→ Only meaningful user events proceed'},
+  {cls:'s2', label:'Step 2 — Static Enrichment (Redis lookup)', body:'GET user:u_4821 → {plan:free, country:US, segment:at_risk, lifetime_orders:0}\nLatency: <5ms'},
+  {cls:'s3', label:'Step 3 — Session State Update (Flink state)', body:'event_count: 9→10 | error_count: 2→3 | pricing_visits: 3 | duration_s: 501\nKeyed by session_id — per-session memory'},
+  {cls:'s4', label:'Step 4 — Derived Features', body:'error_rate = 3/10 = 0.30\nchurn_risk = (0.30 >= 0.30) AND (plan == "free") → true\nintent_score = pricing_visits×0.25 + at_risk_bonus = 0.82'},
+];
+
+const CMP_ROWS = [
+  ['Columns stored',    '7 (raw fields only)',          '20+ (raw + enriched)'],
+  ['User plan/segment', 'Missing',                      'plan=free, segment=at_risk'],
+  ['Session context',   'Missing',                      'error_count=3, pricing_visits=3'],
+  ['Derived signals',   'Missing',                      'error_rate=0.30, churn_risk=true'],
+  ['Pinot filter',      'Only by event_type, ts',       'By plan, segment, churn_risk, intent_score'],
+  ['Embedding text',    '"User hit error at 14:35"',    '"Free user, at_risk, 3 errors, 30% rate, /pricing 3x"'],
+  ['LLM output',        '"Insufficient context"',       '"High churn risk. Fix checkout + send offer."'],
+  ['Enrichment cost',   'None (but paid at query time)','Paid once at ingest — free at every query'],
+];
+
+function buildOutputs(containerId, type) {
+  const isBad = type === 'raw';
+  document.getElementById(containerId).innerHTML = `
+    <div class="out-box">
+      <div class="out-header ${type}">${isBad?'❌':'✅'} Embedding Text</div>
+      <div class="out-body ${isBad?'raw-r':'enr-r'}" style="font-family:monospace;font-size:.67rem">
+        ${isBad
+          ? '"User u_4821 hit an error at 14:35."<br><br><span style="color:#3a3a3a;font-size:.62rem">→ Generic vector. Matches nothing specifically.</span>'
+          : '"User u_4821 (free, US, at_risk) hit 500 error on /checkout. Session: 10 events, 3 errors (30% rate), /pricing visited 3x. Churn risk: TRUE. Intent: 0.82."<br><br><span style="color:#1a5a3a;font-size:.62rem">→ Specific vector. Matches "checkout errors", "churn risk", "free plan frustration".</span>'
+        }
+      </div>
+    </div>
+    <div class="out-box">
+      <div class="out-header ${type}">${isBad?'❌':'✅'} LLM Response</div>
+      <div class="out-body ${isBad?'raw-r':'enr-r'}">
+        ${isBad
+          ? '<b>Query:</b> "Why is u_4821 at risk?"<br><b>LLM:</b> "Insufficient context. Only a single error event is available with no behavioral history."'
+          : '<b>Query:</b> "Why is u_4821 at risk?"<br><b>LLM:</b> "User u_4821 (free plan, at_risk) hit 3 checkout errors (30% error rate) and visited /pricing 3 times without converting. Churn risk is HIGH. Recommend: escalate checkout fix + send targeted upgrade offer."'
+        }
+      </div>
+    </div>
+  `;
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.tab.${type}`).classList.add('on');
+
+  if (type === 'raw') {
+    buildPipeline('pipe-raw', RAW_NODES, 'raw');
+    document.getElementById('raw-event-json').innerHTML = `<pre style="white-space:pre-wrap">${RAW_JSON}</pre>`;
+    document.getElementById('raw-missing').innerHTML = RAW_MISSING;
+    buildOutputs('raw-outputs', 'raw');
+  } else if (type === 'enr') {
+    buildPipeline('pipe-enr', ENR_NODES, 'enr');
+    const stepsEl = document.getElementById('enr-steps');
+    stepsEl.innerHTML = '';
+    ENR_STEPS_DATA.forEach((s, i) => {
+      const el = document.createElement('div');
+      el.className = `step ${s.cls}`;
+      el.innerHTML = `<div class="step-header">${s.label}</div><div class="step-body">${s.body}</div>`;
+      stepsEl.appendChild(el);
+      setTimeout(() => el.classList.add('in'), i * 200);
+    });
+    document.getElementById('enr-event-json').innerHTML = `<pre style="white-space:pre-wrap">${ENR_JSON}</pre>`;
+    document.getElementById('enr-enables').innerHTML = ENR_ENABLES;
+    buildOutputs('enr-outputs', 'enr');
+  } else {
+    const tbody = document.getElementById('cmp-body');
+    tbody.innerHTML = CMP_ROWS.map(([d,r,e]) =>
+      `<tr><td>${d}</td><td class="rc">${r}</td><td class="ec">${e}</td></tr>`
+    ).join('');
+    document.getElementById('cmp-outputs').innerHTML = `
+      <div class="out-box">
+        <div class="out-header raw">❌ Raw Pipeline LLM Output</div>
+        <div class="out-body raw-r" style="font-size:.7rem">"Insufficient context. Only a single error event available with no behavioral history or user state."</div>
+      </div>
+      <div class="out-box">
+        <div class="out-header enr">✅ Enriched Pipeline LLM Output</div>
+        <div class="out-body enr-r" style="font-size:.7rem">"User u_4821 (free plan, at_risk) hit 3 checkout errors (30% error rate) and visited /pricing 3 times. Churn risk: HIGH. Recommend: fix checkout + send targeted upgrade offer with payment retry."</div>
+      </div>
+    `;
+  }
+}
+
+show('cmp');
+</script>
+</body>
+</html>

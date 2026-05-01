@@ -1,0 +1,123 @@
+---
+# Apache Pinot — Single-node setup for Day 08
+# Includes: Zookeeper, Pinot Controller, Pinot Broker, Pinot Server
+#
+# Usage:
+#   docker compose up -d
+#   docker compose ps          (check all services are healthy)
+#   docker compose down
+#   docker compose down -v     (remove volumes)
+#
+# Pinot UI:      http://localhost:9000
+# Pinot Broker:  http://localhost:8099
+# Zookeeper:     localhost:2181
+
+version: "3.8"
+
+services:
+
+  zookeeper:
+    image: zookeeper:3.9
+    container_name: pinot-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    healthcheck:
+      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  pinot-controller:
+    image: apachepinot/pinot:1.1.0
+    container_name: pinot-controller
+    command: StartController -zkAddress zookeeper:2181
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9000:9000"
+    environment:
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+
+  pinot-broker:
+    image: apachepinot/pinot:1.1.0
+    container_name: pinot-broker
+    command: StartBroker -zkAddress zookeeper:2181
+    depends_on:
+      pinot-controller:
+        condition: service_healthy
+    ports:
+      - "8099:8099"
+    environment:
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8099/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+
+  pinot-server:
+    image: apachepinot/pinot:1.1.0
+    container_name: pinot-server
+    command: StartServer -zkAddress zookeeper:2181
+    depends_on:
+      pinot-controller:
+        condition: service_healthy
+    ports:
+      - "8098:8098"
+    environment:
+      JAVA_OPTS: "-Xms512m -Xmx2g"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8098/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 8
+
+# ── USAGE AFTER STARTUP ───────────────────────────────────────────────────────
+#
+# 1. Verify all services are running:
+#    docker compose ps
+#
+# 2. Open Pinot UI:
+#    http://localhost:9000
+#
+# 3. Create a table via REST API:
+#    curl -X POST http://localhost:9000/tables \
+#      -H "Content-Type: application/json" \
+#      -d @pinot_table_config.json
+#
+# 4. Query via Pinot Broker:
+#    curl -X POST http://localhost:8099/query/sql \
+#      -H "Content-Type: application/json" \
+#      -d '{"sql": "SELECT * FROM user_events LIMIT 10"}'
+#
+# 5. Query via Pinot UI:
+#    http://localhost:9000 → Query Console
+#
+# ── SAMPLE QUERIES ────────────────────────────────────────────────────────────
+#
+# Users at churn risk (last hour):
+#   SELECT user_id, error_rate, intent_score
+#   FROM user_events_realtime
+#   WHERE churn_risk = true AND ts > ago('1h')
+#   ORDER BY error_rate DESC LIMIT 10
+#
+# Real-time error count by page:
+#   SELECT page, COUNT(*) as errors
+#   FROM user_events_realtime
+#   WHERE event_type = 'system.server_error' AND ts > ago('10m')
+#   GROUP BY page ORDER BY errors DESC
+#
+# User session summary:
+#   SELECT user_id, MAX(session_errors) as errors, MAX(error_rate) as rate
+#   FROM user_events_realtime
+#   WHERE user_id = 'u_4821' AND ts > ago('7d')
+#   GROUP BY user_id
