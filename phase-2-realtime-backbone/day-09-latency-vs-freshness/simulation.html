@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 09 — Latency vs Freshness</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --fast:#ef4444;--fresh:#22c55e;--bal:#f59e0b;
+  --kafka:#00e5ff;--pinot:#4d9fff;--llm:#a855f7;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,229,255,.015) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.015) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 .vs{color:var(--bal)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-fast.on{color:var(--fast);border-color:var(--fast);box-shadow:0 0 14px rgba(239,68,68,.25)}
+.tab.t-fresh.on{color:var(--fresh);border-color:var(--fresh);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-compare.on{color:var(--bal);border-color:var(--bal);box-shadow:0 0 14px rgba(245,158,11,.25)}
+.tab.t-tiered.on{color:var(--pinot);border-color:var(--pinot);box-shadow:0 0 14px rgba(77,159,255,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:500px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--bal),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* PIPELINE */
+.pipeline{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 0;overflow-x:auto;flex-wrap:nowrap}
+.pnode{min-width:100px;max-width:130px;padding:12px 8px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;flex-shrink:0;opacity:.35;transform:translateY(5px);transition:all .3s;cursor:pointer}
+.pnode.in{opacity:1;transform:translateY(0)}
+.pnode.lit{border-color:var(--nc,#00e5ff);box-shadow:0 0 18px rgba(var(--nr,0,229,255),.2)}
+.pnode.pulse{animation:np .55s ease-out}
+@keyframes np{0%{box-shadow:0 0 0 0 rgba(var(--nr,0,229,255),.7)}100%{box-shadow:0 0 0 16px rgba(var(--nr,0,229,255),0)}}
+.pn-icon{font-size:1.3rem;margin-bottom:5px;display:block;filter:drop-shadow(0 0 5px var(--nc,#00e5ff))}
+.pn-lbl{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#00e5ff);margin-bottom:2px}
+.pn-name{font-size:.75rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.pn-sub{font-size:.58rem;color:var(--dim)}
+.arrow{width:28px;height:2px;flex-shrink:0;position:relative}
+.arrow::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);border-top:3px solid transparent;border-bottom:3px solid transparent;border-left:5px solid #1e3a5f}
+.arrow.fast{background:var(--fast);box-shadow:0 0 6px var(--fast)}.arrow.fast::after{border-left-color:var(--fast)}
+.arrow.fresh{background:var(--fresh);box-shadow:0 0 6px var(--fresh)}.arrow.fresh::after{border-left-color:var(--fresh)}
+
+/* RESULT CARDS */
+.result-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+@media(max-width:700px){.result-grid{grid-template-columns:1fr}}
+.rcard{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.rcard-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.rcard-header.fast{background:rgba(239,68,68,.07);color:var(--fast);border-bottom:1px solid rgba(239,68,68,.15)}
+.rcard-header.fresh{background:rgba(34,197,94,.07);color:var(--fresh);border-bottom:1px solid rgba(34,197,94,.15)}
+.rcard-header.bal{background:rgba(245,158,11,.07);color:var(--bal);border-bottom:1px solid rgba(245,158,11,.15)}
+.rcard-body{padding:12px 14px;font-size:.72rem;line-height:1.7}
+.rcard-body.fast-r{color:#7a3a3a}.rcard-body.fresh-r{color:#3a7a5a}.rcard-body.bal-r{color:#7a6a3a}
+.rcard-body b{color:#8ab0d0}
+
+/* METRICS ROW */
+.metrics-row{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+@media(max-width:600px){.metrics-row{grid-template-columns:1fr}}
+.mcard{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center}
+.mcard-val{font-size:1.2rem;font-weight:700;font-family:monospace;line-height:1}
+.mcard-lbl{font-size:.6rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+
+/* COMPARE TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.fc{color:var(--fast)}.gc{color:var(--fresh)}.bc{color:var(--bal)}
+
+/* TIERED FRESHNESS */
+.tier-grid{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.tier-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:#040810;opacity:.35;transform:translateX(-6px);transition:all .35s}
+.tier-row.in{opacity:1;transform:translateX(0)}
+.tier-name{font-size:.72rem;font-weight:600;color:#c8d0e8;min-width:160px}
+.tier-ttl{font-size:.68rem;font-family:monospace;min-width:80px}
+.tier-bar-wrap{flex:1;height:6px;background:#0c1428;border-radius:3px;overflow:hidden}
+.tier-bar{height:100%;border-radius:3px;transition:width 1s ease}
+.tier-note{font-size:.62rem;color:var(--dim);min-width:200px;text-align:right}
+
+/* PACKET */
+.pkt{position:absolute;width:7px;height:7px;border-radius:50%;pointer-events:none;z-index:20;opacity:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 2 · Day 09</div>
+    <h1>Latency <span class="vs">vs</span> Freshness</h1>
+    <p class="sub">The tradeoff that determines AI answer quality</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-fast"    onclick="show('fast')">❌ Fast but Stale</button>
+    <button class="tab t-fresh"   onclick="show('fresh')">✅ Fresh but Slower</button>
+    <button class="tab t-compare" onclick="show('compare')">⚡ Side-by-Side</button>
+    <button class="tab t-tiered"  onclick="show('tiered')">🎯 Tiered Freshness</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-fast"></div>
+    <div class="view" id="view-fresh"></div>
+    <div class="view" id="view-compare"></div>
+    <div class="view" id="view-tiered"></div>
+  </div>
+</div>
+
+<script>
+// ── PIPELINE NODES ─────────────────────────────────────────────────────────
+const FAST_NODES = [
+  {id:'app', icon:'📡', lbl:'Producer', name:'Web App',     sub:'event at t=0',      nc:'#64748b',nr:'100,116,139'},
+  {id:'kfk', icon:'⚡', lbl:'Kafka',    name:'user.events', sub:'t+5ms',             nc:'#00e5ff',nr:'0,229,255'},
+  {id:'cch', icon:'💾', lbl:'Cache',    name:'Query Cache', sub:'TTL=5min (stale!)', nc:'#ef4444',nr:'239,68,68'},
+  {id:'llm', icon:'✨', lbl:'LLM',      name:'AI Response', sub:'wrong answer',      nc:'#ef4444',nr:'239,68,68'},
+];
+const FRESH_NODES = [
+  {id:'app2',icon:'📡', lbl:'Producer', name:'Web App',     sub:'event at t=0',      nc:'#64748b',nr:'100,116,139'},
+  {id:'kfk2',icon:'⚡', lbl:'Kafka',    name:'user.events', sub:'t+5ms',             nc:'#00e5ff',nr:'0,229,255'},
+  {id:'flk', icon:'🌊', lbl:'Flink',    name:'Enrichment',  sub:'t+36ms',            nc:'#f59e0b',nr:'245,158,11'},
+  {id:'pin', icon:'🔷', lbl:'Pinot',    name:'Real-Time',   sub:'t+836ms (~1s)',     nc:'#4d9fff',nr:'77,159,255'},
+  {id:'llm2',icon:'✨', lbl:'LLM',      name:'AI Response', sub:'correct answer',    nc:'#22c55e',nr:'34,197,94'},
+];
+
+function buildPipeline(containerId, nodes, arrowCls) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = '';
+  const pipe = document.createElement('div');
+  pipe.className = 'pipeline';
+  nodes.forEach((n, i) => {
+    if (i > 0) {
+      const a = document.createElement('div');
+      a.className = `arrow ${arrowCls}`;
+      pipe.appendChild(a);
+    }
+    const el = document.createElement('div');
+    el.className = 'pnode';
+    el.style.setProperty('--nc', n.nc);
+    el.style.setProperty('--nr', n.nr);
+    el.innerHTML = `<span class="pn-icon">${n.icon}</span><div class="pn-lbl">${n.lbl}</div><div class="pn-name">${n.name}</div><div class="pn-sub">${n.sub}</div>`;
+    pipe.appendChild(el);
+    setTimeout(() => el.classList.add('in', 'lit', 'pulse'), i * 150);
+  });
+  c.appendChild(pipe);
+}
+
+function buildMetrics(containerId, vals) {
+  const c = document.getElementById(containerId);
+  const row = document.createElement('div');
+  row.className = 'metrics-row';
+  vals.forEach(v => {
+    const m = document.createElement('div');
+    m.className = 'mcard';
+    m.innerHTML = `<div class="mcard-val" style="color:${v.color}">${v.val}</div><div class="mcard-lbl">${v.lbl}</div>`;
+    row.appendChild(m);
+  });
+  c.appendChild(row);
+}
+
+function buildResultCards(containerId, cards) {
+  const c = document.getElementById(containerId);
+  const grid = document.createElement('div');
+  grid.className = 'result-grid';
+  cards.forEach(card => {
+    const box = document.createElement('div');
+    box.className = 'rcard';
+    box.innerHTML = `
+      <div class="rcard-header ${card.cls}">${card.header}</div>
+      <div class="rcard-body ${card.cls}-r">${card.body}</div>
+    `;
+    grid.appendChild(box);
+  });
+  c.appendChild(grid);
+}
+
+// ── FAST VIEW ──────────────────────────────────────────────────────────────
+function buildFast() {
+  const c = document.getElementById('view-fast');
+  c.innerHTML = '';
+  buildPipeline('view-fast', FAST_NODES, 'fast');
+  buildMetrics('view-fast', [
+    {val:'~5ms',   lbl:'Query Latency (cache hit)', color:'var(--fast)'},
+    {val:'~5min',  lbl:'Data Age',                  color:'var(--fast)'},
+    {val:'❌ WRONG',lbl:'LLM Answer',               color:'var(--fast)'},
+  ]);
+  buildResultCards('view-fast', [
+    {
+      cls:'fast', header:'❌ Cached Data (5 min old)',
+      body:'<b>Errors:</b> 0 (stale — user actually has 5)<br><b>Churn risk:</b> false (stale — actually TRUE)<br><b>Data age:</b> ~4.5 minutes<br><br><span style="color:#3a3a3a;font-size:.65rem">Cache was populated before the errors occurred.</span>',
+    },
+    {
+      cls:'fast', header:'❌ LLM Response (wrong)',
+      body:'"User u_4821 (free plan) appears healthy. No errors detected. No churn risk identified. No immediate action required."<br><br><span style="color:#7a3a3a;font-size:.65rem">Confidently wrong. The LLM has no way to know the data is stale.</span>',
+    },
+  ]);
+}
+
+// ── FRESH VIEW ─────────────────────────────────────────────────────────────
+function buildFresh() {
+  const c = document.getElementById('view-fresh');
+  c.innerHTML = '';
+  buildPipeline('view-fresh', FRESH_NODES, 'fresh');
+  buildMetrics('view-fresh', [
+    {val:'~68ms',  lbl:'Query Latency (direct Pinot)', color:'var(--fresh)'},
+    {val:'~1s',    lbl:'Data Age',                     color:'var(--fresh)'},
+    {val:'✅ RIGHT',lbl:'LLM Answer',                  color:'var(--fresh)'},
+  ]);
+  buildResultCards('view-fresh', [
+    {
+      cls:'fresh', header:'✅ Fresh Data (~1s old)',
+      body:'<b>Errors:</b> 5 (correct)<br><b>Churn risk:</b> TRUE (correct)<br><b>Error rate:</b> 50% (correct)<br><b>Data age:</b> ~1 second<br><br><span style="color:#1a5a3a;font-size:.65rem">Pinot ingestion lag: ~800ms. Acceptable for support tooling.</span>',
+    },
+    {
+      cls:'fresh', header:'✅ LLM Response (correct)',
+      body:'"User u_4821 (free plan, at_risk) is at HIGH churn risk. 5 checkout errors (50% error rate). Intent score: 0.82. Recommend: escalate checkout fix immediately + send targeted upgrade offer."<br><br><span style="color:#1a5a3a;font-size:.65rem">Actionable. Evidence-backed. Based on current state.</span>',
+    },
+  ]);
+}
+
+// ── COMPARE VIEW ───────────────────────────────────────────────────────────
+const CMP_ROWS = [
+  ['Query latency',   '~5ms (cache hit)',    '~68ms (direct Pinot)'],
+  ['Data age',        '~4.5 minutes',        '~1 second'],
+  ['Errors reported', '0 (stale)',           '5 (correct)'],
+  ['Churn risk',      'false (stale)',       'TRUE (correct)'],
+  ['LLM answer',      '❌ "User is healthy"','✅ "HIGH churn risk"'],
+  ['Cache overhead',  'None',               'None (no cache)'],
+  ['Pinot load',      'Low (cache absorbs)', 'Higher (every query)'],
+  ['AI use case',     '❌ Wrong answers',    '✅ Correct answers'],
+];
+
+function buildCompare() {
+  const c = document.getElementById('view-compare');
+  c.innerHTML = '';
+  const table = document.createElement('table');
+  table.className = 'cmp-table';
+  table.innerHTML = `
+    <thead><tr><th>Dimension</th><th style="color:var(--fast)">❌ Fast (cache TTL=5min)</th><th style="color:var(--fresh)">✅ Fresh (no cache)</th></tr></thead>
+    <tbody>${CMP_ROWS.map(([d,f,g]) => `<tr><td>${d}</td><td class="fc">${f}</td><td class="gc">${g}</td></tr>`).join('')}</tbody>
+  `;
+  c.appendChild(table);
+
+  const insight = document.createElement('div');
+  insight.style.cssText = 'margin-top:16px;padding:14px;border-radius:10px;border:1px solid rgba(245,158,11,.2);background:rgba(245,158,11,.04);font-size:.75rem;line-height:1.7;color:#7a6a3a';
+  insight.innerHTML = `
+    <b style="color:var(--bal)">Key Insight:</b> The 63ms difference between fast (5ms) and fresh (68ms) is irrelevant.<br>
+    The LLM call adds ~500ms regardless. Total latency: 505ms vs 568ms — a 12% difference.<br>
+    But the accuracy difference is 0% correct vs 100% correct.<br>
+    <b style="color:var(--bal)">For AI systems: freshness > query speed.</b>
+  `;
+  c.appendChild(insight);
+}
+
+// ── TIERED VIEW ────────────────────────────────────────────────────────────
+const TIERS = [
+  {name:'Fraud Detection',   ttl:'No cache',  bar:2,   color:'var(--fresh)', note:'freshness < 1s required'},
+  {name:'Support Tooling',   ttl:'TTL = 30s', bar:8,   color:'var(--fresh)', note:'freshness < 31s acceptable'},
+  {name:'LLM Context',       ttl:'TTL = 60s', bar:15,  color:'var(--bal)',   note:'freshness < 61s acceptable'},
+  {name:'Hourly Reports',    ttl:'TTL = 30m', bar:50,  color:'var(--bal)',   note:'freshness < 31min acceptable'},
+  {name:'Weekly Dashboards', ttl:'TTL = 1hr', bar:100, color:'var(--fast)',  note:'freshness < 1hr acceptable'},
+];
+
+function buildTiered() {
+  const c = document.getElementById('view-tiered');
+  c.innerHTML = '';
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:12px';
+  title.textContent = 'Tiered Freshness — Match Cache TTL to Use Case';
+  c.appendChild(title);
+
+  const grid = document.createElement('div');
+  grid.className = 'tier-grid';
+  TIERS.forEach((t, i) => {
+    const row = document.createElement('div');
+    row.className = 'tier-row';
+    row.innerHTML = `
+      <div class="tier-name">${t.name}</div>
+      <div class="tier-ttl" style="color:${t.color}">${t.ttl}</div>
+      <div class="tier-bar-wrap"><div class="tier-bar" style="width:0%;background:${t.color}" data-w="${t.bar}"></div></div>
+      <div class="tier-note">${t.note}</div>
+    `;
+    grid.appendChild(row);
+    setTimeout(() => {
+      row.classList.add('in');
+      setTimeout(() => {
+        row.querySelector('.tier-bar').style.width = t.bar + '%';
+      }, 200);
+    }, i * 150);
+  });
+  c.appendChild(grid);
+
+  const rule = document.createElement('div');
+  rule.style.cssText = 'margin-top:16px;padding:14px;border-radius:10px;border:1px solid rgba(77,159,255,.2);background:rgba(77,159,255,.04);font-size:.73rem;line-height:1.7;color:#3a5a7a';
+  rule.innerHTML = `
+    <b style="color:var(--pinot)">Production Rule:</b> Never apply a single cache TTL to all query types.<br>
+    Different queries have different freshness requirements.<br>
+    Fraud detection and support tooling need near-real-time data.<br>
+    Historical reports can tolerate hours of staleness.<br>
+    <b style="color:var(--pinot)">Design your cache TTL per query type, not per system.</b>
+  `;
+  c.appendChild(rule);
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+
+  if (type === 'fast')    buildFast();
+  else if (type === 'fresh')   buildFresh();
+  else if (type === 'compare') buildCompare();
+  else                         buildTiered();
+}
+
+show('compare');
+</script>
+</body>
+</html>
