@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 10 — What LLMs Actually Need</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --raw:#ef4444;--ctx:#22c55e;--llm:#a855f7;
+  --kafka:#00e5ff;--pinot:#4d9fff;--bal:#f59e0b;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(168,85,247,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--llm)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-raw.on{color:var(--raw);border-color:var(--raw);box-shadow:0 0 14px rgba(239,68,68,.25)}
+.tab.t-ctx.on{color:var(--ctx);border-color:var(--ctx);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-cmp.on{color:var(--bal);border-color:var(--bal);box-shadow:0 0 14px rgba(245,158,11,.25)}
+.tab.t-flow.on{color:var(--llm);border-color:var(--llm);box-shadow:0 0 14px rgba(168,85,247,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:500px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--llm),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(168,85,247,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* TWO-COL LAYOUT */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+
+/* PANEL BOX */
+.pbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.pbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.pbox-header.raw{background:rgba(239,68,68,.07);color:var(--raw);border-bottom:1px solid rgba(239,68,68,.15)}
+.pbox-header.ctx{background:rgba(34,197,94,.07);color:var(--ctx);border-bottom:1px solid rgba(34,197,94,.15)}
+.pbox-header.llm{background:rgba(168,85,247,.07);color:var(--llm);border-bottom:1px solid rgba(168,85,247,.15)}
+.pbox-header.neu{background:rgba(77,159,255,.07);color:var(--pinot);border-bottom:1px solid rgba(77,159,255,.15)}
+.pbox-body{padding:12px 14px;font-family:monospace;font-size:.68rem;line-height:1.7;max-height:280px;overflow-y:auto}
+.pbox-body.raw-t{color:#7a3a3a}.pbox-body.ctx-t{color:#3a7a5a}.pbox-body.llm-t{color:#7a5a9a}
+
+/* JSON HIGHLIGHT */
+.jk{color:#7eb8f7}.jv{color:#f7b07e}.jn{color:#b07ef7}.jb{color:#7ef7a0}
+.jbad{color:var(--raw)}.jgood{color:var(--ctx)}
+
+/* RESPONSE QUALITY */
+.quality-bar{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.qcard{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center}
+.qcard-val{font-size:1.2rem;font-weight:700;font-family:monospace;line-height:1}
+.qcard-lbl{font-size:.6rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+
+/* PIPELINE FLOW */
+.flow-row{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 0;overflow-x:auto;flex-wrap:nowrap}
+.fnode{min-width:90px;max-width:120px;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;flex-shrink:0;opacity:.35;transform:translateY(5px);transition:all .3s}
+.fnode.in{opacity:1;transform:translateY(0)}
+.fnode.lit{border-color:var(--nc,#a855f7);box-shadow:0 0 16px rgba(var(--nr,168,85,247),.2)}
+.fn-icon{font-size:1.2rem;margin-bottom:4px;display:block;filter:drop-shadow(0 0 5px var(--nc,#a855f7))}
+.fn-lbl{font-size:.56rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#a855f7);margin-bottom:2px}
+.fn-name{font-size:.72rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.fn-sub{font-size:.56rem;color:var(--dim)}
+.farrow{width:24px;height:2px;flex-shrink:0;position:relative}
+.farrow::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);border-top:3px solid transparent;border-bottom:3px solid transparent;border-left:5px solid #1e3a5f}
+.farrow.lit{background:var(--llm);box-shadow:0 0 6px var(--llm)}.farrow.lit::after{border-left-color:var(--llm)}
+
+/* COMPARE TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.rc{color:var(--raw)}.gc{color:var(--ctx)}
+
+/* TOKEN METER */
+.token-meter{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.tm-row{display:flex;align-items:center;gap:10px}
+.tm-label{font-size:.68rem;min-width:160px;color:#4a6a8a}
+.tm-bar-wrap{flex:1;height:8px;background:#0c1428;border-radius:4px;overflow:hidden}
+.tm-bar{height:100%;border-radius:4px;transition:width 1s ease}
+.tm-val{font-size:.68rem;font-family:monospace;min-width:60px;text-align:right}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 3 · Day 10</div>
+    <h1>What <span>LLMs</span> Actually Need</h1>
+    <p class="sub">Context engineering: transforming data into LLM-ready input</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-raw"  onclick="show('raw')">❌ Raw Input</button>
+    <button class="tab t-ctx"  onclick="show('ctx')">✅ Context Input</button>
+    <button class="tab t-cmp"  onclick="show('cmp')">⚡ Side-by-Side</button>
+    <button class="tab t-flow" onclick="show('flow')">🔄 Full Flow</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-raw"></div>
+    <div class="view" id="view-ctx"></div>
+    <div class="view" id="view-cmp"></div>
+    <div class="view" id="view-flow"></div>
+  </div>
+</div>
+
+<script>
+const RAW_INPUT = `user_id,event_type,ts,page,error_code,plan,segment,error_rate,churn_risk
+u_4821,ui.page_view,2026-04-27T14:20:01Z,/home,,free,at_risk,0.0,false
+u_4821,ui.page_view,2026-04-27T14:23:01Z,/pricing,,free,at_risk,0.0,false
+u_4821,system.server_error,2026-04-27T14:32:01Z,/checkout,500,free,at_risk,0.33,false
+u_4821,ui.page_view,2026-04-27T14:35:01Z,/pricing,,free,at_risk,0.25,false
+u_4821,system.server_error,2026-04-27T14:38:01Z,/checkout,500,free,at_risk,0.40,true`;
+
+const CTX_INPUT = `User u_4821 is on the free plan (at_risk segment).
+
+In the current session: 10 events, 5 errors (50% error rate).
+Visited /pricing 3 times without converting (upgrade intent: HIGH, score: 0.82).
+Churn risk flag is TRUE (high error rate on free plan).
+
+Recent activity (most recent first):
+  - 500 error on /checkout at 14:38 UTC
+  - Clicked 'Upgrade to Pro' on /pricing at 14:38 UTC
+  - 500 error on /checkout at 14:32 UTC
+
+Relevant context from event history:
+  - User u_4821 hit 500 error on /checkout at 14:32 UTC
+  - User u_4821 clicked 'Upgrade to Pro' on /pricing at 14:38 UTC
+  - User u_4821 submitted support ticket: 'checkout keeps failing'`;
+
+const RAW_RESPONSE = `{
+  <span class="jk">"summary"</span>: <span class="jbad">"The user has experienced server errors on the
+  checkout page. The churn_risk field is set to true
+  in some records. The user has visited the pricing page."</span>,
+  <span class="jk">"action"</span>: <span class="jbad">"investigate"</span>,
+  <span class="jk">"confidence"</span>: <span class="jn">0.45</span>,
+  <span class="jk">"evidence"</span>: [
+    <span class="jbad">"churn_risk = true in records"</span>,
+    <span class="jbad">"error_code = 500 present"</span>,
+    <span class="jbad">"pricing page visits detected"</span>
+  ]
+}`;
+
+const CTX_RESPONSE = `{
+  <span class="jk">"summary"</span>: <span class="jgood">"User u_4821 is at high churn risk due to
+  repeated checkout failures blocking a clear upgrade
+  intent. They attempted to upgrade multiple times but
+  hit 500 errors each time."</span>,
+  <span class="jk">"action"</span>: <span class="jgood">"escalate_checkout_fix"</span>,
+  <span class="jk">"confidence"</span>: <span class="jn">0.94</span>,
+  <span class="jk">"evidence"</span>: [
+    <span class="jgood">"5 checkout errors (50% error rate)"</span>,
+    <span class="jgood">"3 visits to /pricing — upgrade intent 0.82"</span>,
+    <span class="jgood">"Clicked 'Upgrade to Pro' after each error"</span>,
+    <span class="jgood">"Support ticket: 'checkout keeps failing'"</span>
+  ]
+}`;
+
+const CMP_ROWS = [
+  ['Input format',    'CSV dump (all columns)',       'Natural language (selected signals)'],
+  ['Token count',     '~480 tokens',                  '~120 tokens'],
+  ['Token efficiency','❌ 4x more expensive',          '✅ Minimal, focused'],
+  ['Summary quality', '❌ Restates field names',       '✅ Synthesizes behavior'],
+  ['Action',          '❌ "investigate" (vague)',      '✅ "escalate_checkout_fix" (specific)'],
+  ['Confidence',      '❌ 45% (model uncertain)',      '✅ 94% (model confident)'],
+  ['Evidence',        '❌ Field names, not insights',  '✅ Behavioral facts with context'],
+  ['Actionable',      '❌ No',                         '✅ Yes'],
+];
+
+const FLOW_NODES = [
+  {id:'pt',  icon:'🔷', lbl:'Pinot',    name:'Structured Data',  sub:'metrics + counts',    nc:'#4d9fff',nr:'77,159,255'},
+  {id:'vs',  icon:'🧠', lbl:'Vector',   name:'Semantic Events',  sub:'top-3 chunks',        nc:'#a855f7',nr:'168,85,247'},
+  {id:'cb',  icon:'⚙️', lbl:'Builder',  name:'Context Builder',  sub:'select + transform',  nc:'#f59e0b',nr:'245,158,11'},
+  {id:'pr',  icon:'📝', lbl:'Prompt',   name:'Assembled Prompt', sub:'~120 tokens',         nc:'#22c55e',nr:'34,197,94'},
+  {id:'lm',  icon:'✨', lbl:'LLM',      name:'GPT-4o / Claude',  sub:'reasons over context',nc:'#a855f7',nr:'168,85,247'},
+  {id:'out', icon:'📊', lbl:'Output',   name:'JSON Response',    sub:'summary+action+conf', nc:'#22c55e',nr:'34,197,94'},
+];
+
+function buildRaw() {
+  const c = document.getElementById('view-raw');
+  c.innerHTML = `
+    <div class="two-col">
+      <div class="pbox">
+        <div class="pbox-header raw">❌ Raw Input to LLM (CSV dump)</div>
+        <div class="pbox-body raw-t" style="font-family:monospace;font-size:.65rem;white-space:pre">${RAW_INPUT}</div>
+      </div>
+      <div class="pbox">
+        <div class="pbox-header raw">❌ LLM Response (poor quality)</div>
+        <div class="pbox-body raw-t"><pre style="white-space:pre-wrap">${RAW_RESPONSE}</pre></div>
+      </div>
+    </div>
+    <div class="quality-bar">
+      <div class="qcard"><div class="qcard-val" style="color:var(--raw)">~480</div><div class="qcard-lbl">Tokens Used</div></div>
+      <div class="qcard"><div class="qcard-val" style="color:var(--raw)">45%</div><div class="qcard-lbl">LLM Confidence</div></div>
+    </div>
+    <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid rgba(239,68,68,.2);background:rgba(239,68,68,.04);font-size:.72rem;color:#7a3a3a;line-height:1.6">
+      <b style="color:var(--raw)">Problems:</b> Restates field names instead of interpreting them. No synthesis. No recommendation. Low confidence. Generic action. The LLM is working harder than it needs to on irrelevant data.
+    </div>
+  `;
+}
+
+function buildCtx() {
+  const c = document.getElementById('view-ctx');
+  c.innerHTML = `
+    <div class="two-col">
+      <div class="pbox">
+        <div class="pbox-header ctx">✅ Context-Engineered Input</div>
+        <div class="pbox-body ctx-t" style="white-space:pre-wrap">${CTX_INPUT}</div>
+      </div>
+      <div class="pbox">
+        <div class="pbox-header ctx">✅ LLM Response (high quality)</div>
+        <div class="pbox-body ctx-t"><pre style="white-space:pre-wrap">${CTX_RESPONSE}</pre></div>
+      </div>
+    </div>
+    <div class="quality-bar">
+      <div class="qcard"><div class="qcard-val" style="color:var(--ctx)">~120</div><div class="qcard-lbl">Tokens Used</div></div>
+      <div class="qcard"><div class="qcard-val" style="color:var(--ctx)">94%</div><div class="qcard-lbl">LLM Confidence</div></div>
+    </div>
+    <div style="margin-top:12px;padding:12px;border-radius:8px;border:1px solid rgba(34,197,94,.2);background:rgba(34,197,94,.04);font-size:.72rem;color:#3a7a5a;line-height:1.6">
+      <b style="color:var(--ctx)">Why it works:</b> Natural language matches LLM training data. Only relevant signals included. Context tells a story — who, what, why. Output format specified. Result: specific, evidence-backed, actionable response at 75% fewer tokens.
+    </div>
+  `;
+}
+
+function buildCmp() {
+  const c = document.getElementById('view-cmp');
+  const table = document.createElement('table');
+  table.className = 'cmp-table';
+  table.innerHTML = `
+    <thead><tr><th>Dimension</th><th style="color:var(--raw)">❌ Raw Input</th><th style="color:var(--ctx)">✅ Context-Engineered</th></tr></thead>
+    <tbody>${CMP_ROWS.map(([d,r,g]) => `<tr><td>${d}</td><td class="rc">${r}</td><td class="gc">${g}</td></tr>`).join('')}</tbody>
+  `;
+  c.innerHTML = '';
+  c.appendChild(table);
+
+  const meter = document.createElement('div');
+  meter.className = 'token-meter';
+  meter.style.marginTop = '16px';
+  meter.innerHTML = `
+    <div style="font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Token Usage Comparison</div>
+    <div class="tm-row">
+      <div class="tm-label">Raw CSV input</div>
+      <div class="tm-bar-wrap"><div class="tm-bar" style="width:0%;background:var(--raw)" data-w="100"></div></div>
+      <div class="tm-val" style="color:var(--raw)">~480 tok</div>
+    </div>
+    <div class="tm-row">
+      <div class="tm-label">Context-engineered</div>
+      <div class="tm-bar-wrap"><div class="tm-bar" style="width:0%;background:var(--ctx)" data-w="25"></div></div>
+      <div class="tm-val" style="color:var(--ctx)">~120 tok</div>
+    </div>
+  `;
+  c.appendChild(meter);
+  setTimeout(() => {
+    c.querySelectorAll('.tm-bar').forEach(b => { b.style.width = b.dataset.w + '%'; });
+  }, 200);
+}
+
+function buildFlow() {
+  const c = document.getElementById('view-flow');
+  c.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'flow-row';
+  FLOW_NODES.forEach((n, i) => {
+    if (i > 0) {
+      const a = document.createElement('div');
+      a.className = 'farrow';
+      a.id = `fa-${i}`;
+      row.appendChild(a);
+    }
+    const el = document.createElement('div');
+    el.className = 'fnode';
+    el.id = `fn-${n.id}`;
+    el.style.setProperty('--nc', n.nc);
+    el.style.setProperty('--nr', n.nr);
+    el.innerHTML = `<span class="fn-icon">${n.icon}</span><div class="fn-lbl">${n.lbl}</div><div class="fn-name">${n.name}</div><div class="fn-sub">${n.sub}</div>`;
+    row.appendChild(el);
+    setTimeout(() => el.classList.add('in', 'lit'), i * 150);
+    setTimeout(() => { if (i > 0) document.getElementById(`fa-${i}`)?.classList.add('lit'); }, i * 150 + 75);
+  });
+  c.appendChild(row);
+
+  const steps = document.createElement('div');
+  steps.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:16px';
+  const stepData = [
+    {cls:'neu', label:'Step 1 — Signal Selection', body:'Query intent detected → only relevant fields selected\nChurn query: error_rate, churn_risk, pricing_visits, intent_score, plan, segment'},
+    {cls:'ctx', label:'Step 2 — Text Transformation', body:'{error_count:5, error_rate:0.5, churn_risk:true}\n→ "User u_4821 (free plan, at_risk) has 5 errors (50% rate). Churn risk: TRUE."'},
+    {cls:'llm', label:'Step 3 — Prompt Assembly', body:'[System prompt] + [Context text] + [Query] + [Output format spec]\nTotal: ~120 tokens (vs ~480 for raw dump)'},
+    {cls:'ctx', label:'Step 4 — LLM Response', body:'{"summary": "...", "action": "escalate_checkout_fix", "confidence": 0.94, "evidence": [...]}'},
+  ];
+  stepData.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.style.cssText = 'border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-6px);transition:all .35s';
+    el.innerHTML = `<div style="font-size:.63rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px" class="pbox-header ${s.cls}" style="background:none;border:none;padding:0">${s.label}</div><div style="font-size:.68rem;color:#3a5a7a;font-family:monospace;white-space:pre-wrap">${s.body}</div>`;
+    steps.appendChild(el);
+    setTimeout(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; }, FLOW_NODES.length * 150 + i * 200);
+  });
+  c.appendChild(steps);
+}
+
+function show(type) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if (type === 'raw')  buildRaw();
+  else if (type === 'ctx')  buildCtx();
+  else if (type === 'cmp')  buildCmp();
+  else                      buildFlow();
+}
+
+show('cmp');
+</script>
+</body>
+</html>
