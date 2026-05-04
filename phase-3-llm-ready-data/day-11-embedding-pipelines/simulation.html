@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 11 — Embedding Pipelines</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --emb:#a855f7;--sim:#22c55e;--diff:#ef4444;
+  --kafka:#00e5ff;--pinot:#4d9fff;--bal:#f59e0b;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(168,85,247,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--emb)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-space.on{color:var(--emb);border-color:var(--emb);box-shadow:0 0 14px rgba(168,85,247,.25)}
+.tab.t-pipe.on{color:var(--kafka);border-color:var(--kafka);box-shadow:0 0 14px rgba(0,229,255,.25)}
+.tab.t-search.on{color:var(--sim);border-color:var(--sim);box-shadow:0 0 14px rgba(34,197,94,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--emb),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(168,85,247,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* ── VECTOR SPACE ── */
+.space-layout{display:grid;grid-template-columns:1fr 320px;gap:16px}
+@media(max-width:800px){.space-layout{grid-template-columns:1fr}}
+
+#canvas-wrap{position:relative;border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+canvas{display:block}
+
+.space-panel{display:flex;flex-direction:column;gap:10px}
+.sp-box{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px}
+.sp-title{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.sp-query{display:flex;gap:6px;margin-bottom:8px}
+.sp-input{flex:1;background:#060a16;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:.7rem;color:#c8d0e8;font-family:monospace;outline:none}
+.sp-input:focus{border-color:var(--emb)}
+.sp-btn{padding:6px 12px;border-radius:6px;font-size:.68rem;font-weight:700;cursor:pointer;border:1px solid var(--emb);background:rgba(168,85,247,.1);color:var(--emb);transition:all .2s}
+.sp-btn:hover{background:rgba(168,85,247,.2)}
+.result-list{display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto}
+.result-item{padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:#060a16;font-size:.65rem;line-height:1.5;cursor:pointer;transition:all .2s}
+.result-item:hover{border-color:var(--emb)}
+.result-item .score{font-family:monospace;font-weight:700}
+.result-item .rtext{color:#4a6a8a;margin-top:2px}
+
+/* ── PIPELINE VIEW ── */
+.pipe-steps{display:flex;flex-direction:column;gap:10px}
+.pipe-step{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden;opacity:.35;transform:translateX(-6px);transition:all .35s}
+.pipe-step.in{opacity:1;transform:translateX(0)}
+.ps-header{padding:9px 14px;font-size:.63rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.ps-header.s1{background:rgba(0,229,255,.07);color:var(--kafka);border-bottom:1px solid rgba(0,229,255,.12)}
+.ps-header.s2{background:rgba(245,158,11,.07);color:var(--bal);border-bottom:1px solid rgba(245,158,11,.12)}
+.ps-header.s3{background:rgba(168,85,247,.07);color:var(--emb);border-bottom:1px solid rgba(168,85,247,.12)}
+.ps-header.s4{background:rgba(77,159,255,.07);color:var(--pinot);border-bottom:1px solid rgba(77,159,255,.12)}
+.ps-header.s5{background:rgba(34,197,94,.07);color:var(--sim);border-bottom:1px solid rgba(34,197,94,.12)}
+.ps-body{padding:10px 14px;font-family:monospace;font-size:.68rem;line-height:1.7;color:#3a5a7a;white-space:pre-wrap}
+
+/* ── SEARCH VIEW ── */
+.search-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.search-layout{grid-template-columns:1fr}}
+.sbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.sbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.sbox-header.kw{background:rgba(239,68,68,.07);color:var(--diff);border-bottom:1px solid rgba(239,68,68,.12)}
+.sbox-header.sem{background:rgba(34,197,94,.07);color:var(--sim);border-bottom:1px solid rgba(34,197,94,.12)}
+.sbox-body{padding:12px 14px;font-size:.7rem;line-height:1.7}
+.match{color:var(--sim);margin-bottom:3px}.no-match{color:var(--diff);margin-bottom:3px;text-decoration:line-through;opacity:.5}
+.score-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.6rem;font-weight:700;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--sim);margin-left:4px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 3 · Day 11</div>
+    <h1><span>Embedding</span> Pipelines</h1>
+    <p class="sub">Text → Vector → Semantic Search → LLM Context</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-space"  onclick="show('space')">🧠 Vector Space</button>
+    <button class="tab t-pipe"   onclick="show('pipe')">⚡ Pipeline Flow</button>
+    <button class="tab t-search" onclick="show('search')">🔍 Keyword vs Semantic</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+
+    <!-- VECTOR SPACE VIEW -->
+    <div class="view" id="view-space">
+      <div class="space-layout">
+        <div id="canvas-wrap">
+          <canvas id="canvas" width="600" height="420"></canvas>
+        </div>
+        <div class="space-panel">
+          <div class="sp-box">
+            <div class="sp-title">Semantic Search</div>
+            <div class="sp-query">
+              <input class="sp-input" id="query-input" type="text" value="checkout error" placeholder="Enter query..."/>
+              <button class="sp-btn" onclick="runSearch()">Search</button>
+            </div>
+            <div class="sp-title" style="margin-top:4px">Top matches:</div>
+            <div class="result-list" id="result-list"></div>
+          </div>
+          <div class="sp-box">
+            <div class="sp-title">Legend</div>
+            <div style="font-size:.65rem;line-height:2">
+              <span style="color:#ef4444">●</span> Checkout/payment errors<br>
+              <span style="color:#f59e0b">●</span> Upgrade/intent events<br>
+              <span style="color:#4d9fff">●</span> Navigation/session<br>
+              <span style="color:#22c55e">●</span> Query point<br>
+              <span style="color:#a855f7">─</span> Similarity connection
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PIPELINE VIEW -->
+    <div class="view" id="view-pipe">
+      <div class="pipe-steps" id="pipe-steps"></div>
+    </div>
+
+    <!-- SEARCH COMPARISON VIEW -->
+    <div class="view" id="view-search">
+      <div class="search-layout">
+        <div class="sbox">
+          <div class="sbox-header kw">❌ Keyword Search — "checkout error"</div>
+          <div class="sbox-body" id="kw-results"></div>
+        </div>
+        <div class="sbox">
+          <div class="sbox-header sem">✅ Semantic Search — "checkout error"</div>
+          <div class="sbox-body" id="sem-results"></div>
+        </div>
+      </div>
+      <div style="margin-top:14px;padding:12px;border-radius:8px;border:1px solid rgba(34,197,94,.2);background:rgba(34,197,94,.04);font-size:.72rem;color:#3a7a5a;line-height:1.6" id="search-insight"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── MOCK EMBEDDING (deterministic) ─────────────────────────────────────────
+function hashCode(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+function seededRand(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+function mockEmbed(text, dims=8) {
+  const rand = seededRand(Math.abs(hashCode(text)));
+  const v = Array.from({length:dims}, () => rand()*2-1);
+  const norm = Math.sqrt(v.reduce((s,x)=>s+x*x,0));
+  return v.map(x=>x/norm);
+}
+function cosine(a,b) {
+  return a.reduce((s,x,i)=>s+x*b[i],0);
+}
+
+// ── DOCUMENTS ──────────────────────────────────────────────────────────────
+const DOCS = [
+  {id:'d1', text:'User hit 500 error on /checkout', cluster:'error', color:'#ef4444'},
+  {id:'d2', text:'Payment failed during upgrade attempt', cluster:'error', color:'#ef4444'},
+  {id:'d3', text:'Checkout keeps failing with server error', cluster:'error', color:'#ef4444'},
+  {id:'d4', text:'Transaction declined on billing page', cluster:'error', color:'#ef4444'},
+  {id:'d5', text:'User clicked Upgrade to Pro on pricing page', cluster:'intent', color:'#f59e0b'},
+  {id:'d6', text:'Visited pricing page 3 times, strong upgrade intent', cluster:'intent', color:'#f59e0b'},
+  {id:'d7', text:'User viewed home page, session started', cluster:'nav', color:'#4d9fff'},
+  {id:'d8', text:'User logged in, session duration 8 minutes', cluster:'nav', color:'#4d9fff'},
+  {id:'d9', text:'User browsed documentation pages', cluster:'nav', color:'#4d9fff'},
+];
+
+// Pre-compute 2D positions using a simple projection
+// (real embeddings would use PCA/UMAP for 2D projection)
+const POSITIONS = {
+  error:  [{x:0.15,y:0.25},{x:0.22,y:0.18},{x:0.12,y:0.32},{x:0.28,y:0.22}],
+  intent: [{x:0.65,y:0.20},{x:0.72,y:0.28}],
+  nav:    [{x:0.55,y:0.72},{x:0.65,y:0.78},{x:0.60,y:0.65}],
+};
+
+let posIdx = {error:0,intent:0,nav:0};
+DOCS.forEach(d => {
+  const p = POSITIONS[d.cluster][posIdx[d.cluster]++];
+  d.x = p.x; d.y = p.y;
+  d.vec = mockEmbed(d.text);
+});
+
+// ── CANVAS DRAWING ─────────────────────────────────────────────────────────
+const canvas = document.getElementById('canvas');
+const ctx2d  = canvas.getContext('2d');
+let queryPoint = null;
+let connections = [];
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width  = wrap.clientWidth;
+  canvas.height = 420;
+  drawSpace();
+}
+
+function toCanvas(nx, ny) {
+  const pad = 40;
+  return {
+    x: pad + nx * (canvas.width  - pad*2),
+    y: pad + ny * (canvas.height - pad*2),
+  };
+}
+
+function drawSpace() {
+  const W = canvas.width, H = canvas.height;
+  ctx2d.clearRect(0,0,W,H);
+
+  // Grid
+  ctx2d.strokeStyle = 'rgba(168,85,247,0.06)';
+  ctx2d.lineWidth = 1;
+  for(let i=0;i<=10;i++){
+    const x = (W/10)*i, y = (H/10)*i;
+    ctx2d.beginPath(); ctx2d.moveTo(x,0); ctx2d.lineTo(x,H); ctx2d.stroke();
+    ctx2d.beginPath(); ctx2d.moveTo(0,y); ctx2d.lineTo(W,y); ctx2d.stroke();
+  }
+
+  // Cluster labels
+  ctx2d.font = '10px monospace';
+  ctx2d.fillStyle = 'rgba(239,68,68,0.4)';
+  ctx2d.fillText('Checkout/Payment Errors', toCanvas(0.05,0.08).x, toCanvas(0.05,0.08).y);
+  ctx2d.fillStyle = 'rgba(245,158,11,0.4)';
+  ctx2d.fillText('Upgrade Intent', toCanvas(0.58,0.08).x, toCanvas(0.58,0.08).y);
+  ctx2d.fillStyle = 'rgba(77,159,255,0.4)';
+  ctx2d.fillText('Navigation/Session', toCanvas(0.48,0.58).x, toCanvas(0.48,0.58).y);
+
+  // Connections to query
+  connections.forEach(c => {
+    const from = toCanvas(queryPoint.x, queryPoint.y);
+    const to   = toCanvas(c.doc.x, c.doc.y);
+    const alpha = Math.max(0, c.score * 0.8);
+    ctx2d.strokeStyle = `rgba(168,85,247,${alpha})`;
+    ctx2d.lineWidth = 1.5;
+    ctx2d.setLineDash([4,4]);
+    ctx2d.beginPath(); ctx2d.moveTo(from.x,from.y); ctx2d.lineTo(to.x,to.y); ctx2d.stroke();
+    ctx2d.setLineDash([]);
+  });
+
+  // Documents
+  DOCS.forEach(d => {
+    const {x,y} = toCanvas(d.x, d.y);
+    const isConnected = connections.some(c=>c.doc.id===d.id);
+
+    // Glow for connected
+    if(isConnected){
+      ctx2d.beginPath();
+      ctx2d.arc(x,y,12,0,Math.PI*2);
+      ctx2d.fillStyle = d.color.replace(')',',0.15)').replace('rgb','rgba');
+      ctx2d.fill();
+    }
+
+    ctx2d.beginPath();
+    ctx2d.arc(x,y,isConnected?7:5,0,Math.PI*2);
+    ctx2d.fillStyle = d.color;
+    ctx2d.shadowColor = d.color;
+    ctx2d.shadowBlur = isConnected ? 12 : 4;
+    ctx2d.fill();
+    ctx2d.shadowBlur = 0;
+
+    // Label
+    ctx2d.font = '9px monospace';
+    ctx2d.fillStyle = isConnected ? '#c8d0e8' : '#3a5a7a';
+    const label = d.text.length > 28 ? d.text.slice(0,28)+'...' : d.text;
+    ctx2d.fillText(label, x+10, y+4);
+  });
+
+  // Query point
+  if(queryPoint){
+    const {x,y} = toCanvas(queryPoint.x, queryPoint.y);
+    ctx2d.beginPath();
+    ctx2d.arc(x,y,9,0,Math.PI*2);
+    ctx2d.fillStyle = '#22c55e';
+    ctx2d.shadowColor = '#22c55e';
+    ctx2d.shadowBlur = 16;
+    ctx2d.fill();
+    ctx2d.shadowBlur = 0;
+    ctx2d.font = 'bold 10px monospace';
+    ctx2d.fillStyle = '#22c55e';
+    ctx2d.fillText('QUERY', x+12, y+4);
+  }
+}
+
+function runSearch() {
+  const query = document.getElementById('query-input').value.trim();
+  if(!query) return;
+
+  const qvec = mockEmbed(query);
+
+  // Score all docs
+  const scored = DOCS.map(d => ({doc:d, score: cosine(qvec, d.vec)}));
+  scored.sort((a,b)=>b.score-a.score);
+  const top4 = scored.slice(0,4);
+
+  // Place query point near top result
+  const topDoc = top4[0].doc;
+  queryPoint = {
+    x: topDoc.x + (Math.random()-0.5)*0.08,
+    y: topDoc.y + (Math.random()-0.5)*0.08,
+    vec: qvec,
+  };
+  connections = top4;
+
+  drawSpace();
+
+  // Update result list
+  const list = document.getElementById('result-list');
+  list.innerHTML = top4.map(r => `
+    <div class="result-item">
+      <span class="score" style="color:${r.score>0.5?'var(--sim)':'var(--bal)'}">${r.score.toFixed(4)}</span>
+      <div class="rtext">${r.doc.text}</div>
+    </div>
+  `).join('');
+}
+
+// ── PIPELINE STEPS ─────────────────────────────────────────────────────────
+const PIPE_STEPS = [
+  {cls:'s1', label:'Step 1 — Raw Event (Kafka)',
+   body:`{
+  "event_id":   "evt_a003",
+  "event_type": "system.server_error",
+  "user_id":    "u_4821",
+  "context":    { "page": "/checkout", "error_code": 500 },
+  "derived":    { "error_rate": 0.30, "churn_risk": true }
+}`},
+  {cls:'s2', label:'Step 2 — Text Conversion (Context Engineering)',
+   body:`"User u_4821 (free plan, at_risk segment) hit 500 error
+on /checkout at 14:32 UTC. Session: 3 errors (30% rate),
+visited /pricing 3 times. Churn risk: TRUE."`},
+  {cls:'s3', label:'Step 3 — Embedding Generation',
+   body:`model = "text-embedding-3-small"  # 1536 dims
+vector = embed(text)
+# → [0.2134, -0.8421, 0.3312, 0.6701, -0.1234, ...]
+#    (1536 floats, L2-normalized)
+content_hash = sha256(text)[:16]  # for re-embedding detection`},
+  {cls:'s4', label:'Step 4 — Upsert to Vector DB',
+   body:`qdrant.upsert(collection="user_events", points=[{
+  "id":     "evt_a003",
+  "vector": vector,          # 1536 floats
+  "payload": {
+    "user_id":    "u_4821",  # filterable
+    "event_type": "system.server_error",
+    "churn_risk": true,      # filterable
+    "text":       "User u_4821..."
+  }
+}])`},
+  {cls:'s5', label:'Step 5 — Retrieval',
+   body:`query = "checkout errors and payment failures"
+results = qdrant.search(
+  collection="user_events",
+  query_vector=embed(query),   # same model!
+  query_filter={"user_id": "u_4821"},
+  limit=4
+)
+# score=0.91 "User u_4821 hit 500 error on /checkout..."
+# score=0.87 "Payment failed during upgrade attempt..."
+# score=0.84 "Support ticket: checkout keeps failing..."`},
+];
+
+function buildPipeline() {
+  const c = document.getElementById('pipe-steps');
+  c.innerHTML = '';
+  PIPE_STEPS.forEach((s,i) => {
+    const el = document.createElement('div');
+    el.className = 'pipe-step';
+    el.innerHTML = `<div class="ps-header ${s.cls}">${s.label}</div><div class="ps-body">${s.body}</div>`;
+    c.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 200);
+  });
+}
+
+// ── SEARCH COMPARISON ──────────────────────────────────────────────────────
+const ALL_DOCS = [
+  {text:'User hit 500 error on /checkout', hasKeyword:true},
+  {text:'Payment failed during upgrade attempt', hasKeyword:false},
+  {text:'Checkout keeps failing with server error', hasKeyword:true},
+  {text:'Transaction declined on billing page', hasKeyword:false},
+  {text:'User clicked Upgrade to Pro on pricing page', hasKeyword:false},
+  {text:'User viewed home page, session started', hasKeyword:false},
+];
+
+function buildSearch() {
+  const kw  = document.getElementById('kw-results');
+  const sem = document.getElementById('sem-results');
+  const ins = document.getElementById('search-insight');
+
+  const query = 'checkout error';
+  const qvec  = mockEmbed(query);
+
+  const scored = ALL_DOCS.map(d => ({...d, score: cosine(qvec, mockEmbed(d.text))}));
+  scored.sort((a,b)=>b.score-a.score);
+
+  kw.innerHTML = ALL_DOCS.map(d => {
+    const found = d.hasKeyword;
+    return `<div class="${found?'match':'no-match'}">${found?'✅':'❌'} ${d.text}</div>`;
+  }).join('');
+
+  sem.innerHTML = scored.map(d => {
+    const relevant = d.score > 0.3;
+    return `<div class="${relevant?'match':'no-match'}">
+      ${relevant?'✅':'—'} ${d.text}
+      <span class="score-badge">${d.score.toFixed(3)}</span>
+    </div>`;
+  }).join('');
+
+  const kwFound  = ALL_DOCS.filter(d=>d.hasKeyword).length;
+  const semFound = scored.filter(d=>d.score>0.3).length;
+  ins.innerHTML = `<b style="color:var(--sim)">Key Insight:</b> Keyword search found <b>${kwFound}</b> documents containing "checkout". 
+Semantic search found <b>${semFound}</b> semantically related documents — including "payment failed" and "transaction declined" 
+which describe the same problem but share no words with the query. 
+This is why embeddings are essential for AI retrieval systems.`;
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+
+  if(type==='space'){
+    setTimeout(()=>{ resizeCanvas(); runSearch(); }, 50);
+  } else if(type==='pipe'){
+    buildPipeline();
+  } else {
+    buildSearch();
+  }
+}
+
+window.addEventListener('resize', ()=>{ if(document.getElementById('view-space').classList.contains('on')) resizeCanvas(); });
+show('space');
+</script>
+</body>
+</html>
