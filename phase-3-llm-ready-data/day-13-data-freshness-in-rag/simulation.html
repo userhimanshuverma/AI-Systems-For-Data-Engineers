@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 13 — Data Freshness in RAG</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --stale:#ef4444;--fresh:#22c55e;--warn:#f59e0b;
+  --kafka:#00e5ff;--emb:#a855f7;--llm:#f472b6;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(239,68,68,.01) 1px,transparent 1px),linear-gradient(90deg,rgba(239,68,68,.01) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 .s{color:var(--stale)} h1 .f{color:var(--fresh)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-compare.on{color:var(--warn);border-color:var(--warn);box-shadow:0 0 14px rgba(245,158,11,.25)}
+.tab.t-timeline.on{color:var(--kafka);border-color:var(--kafka);box-shadow:0 0 14px rgba(0,229,255,.25)}
+.tab.t-monitor.on{color:var(--fresh);border-color:var(--fresh);box-shadow:0 0 14px rgba(34,197,94,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:500px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--warn),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* COMPARE */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.two-col{grid-template-columns:1fr}}
+.pbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.pbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.pbox-header.stale{background:rgba(239,68,68,.07);color:var(--stale);border-bottom:1px solid rgba(239,68,68,.15)}
+.pbox-header.fresh{background:rgba(34,197,94,.07);color:var(--fresh);border-bottom:1px solid rgba(34,197,94,.15)}
+.pbox-body{padding:12px 14px;font-size:.7rem;line-height:1.7}
+.pbox-body.stale-t{color:#7a3a3a}.pbox-body.fresh-t{color:#3a7a5a}
+.event-item{padding:4px 0;border-bottom:1px solid #080e18;font-size:.68rem;font-family:monospace}
+.event-item:last-child{border-bottom:none}
+.ev-stale{color:#3a3a3a;text-decoration:line-through;opacity:.5}
+.ev-fresh{color:#3a7a5a}
+.ev-new{color:var(--fresh);font-weight:600}
+
+/* TIMELINE */
+.timeline{display:flex;flex-direction:column;gap:0;position:relative;padding-left:24px}
+.timeline::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:linear-gradient(to bottom,var(--kafka),var(--emb),var(--llm));opacity:.3}
+.tl-item{position:relative;padding:10px 0 10px 16px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.tl-item.in{opacity:1;transform:translateX(0)}
+.tl-dot{position:absolute;left:-20px;top:14px;width:10px;height:10px;border-radius:50%;border:2px solid var(--dc,#00e5ff);background:var(--bg)}
+.tl-time{font-size:.6rem;color:var(--dim);margin-bottom:2px;font-family:monospace}
+.tl-event{font-size:.72rem;font-weight:600;color:#c8d0e8;margin-bottom:2px}
+.tl-detail{font-size:.65rem;color:#3a5a7a;font-family:monospace}
+.tl-badge{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.58rem;font-weight:700;margin-left:6px}
+.badge-stale{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--stale)}
+.badge-fresh{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--fresh)}
+.badge-warn{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:var(--warn)}
+
+/* MONITOR */
+.monitor-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:600px){.monitor-grid{grid-template-columns:1fr}}
+.mcard{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center}
+.mcard-val{font-size:1.2rem;font-weight:700;font-family:monospace;line-height:1}
+.mcard-lbl{font-size:.6rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+.alert-list{display:flex;flex-direction:column;gap:6px}
+.alert-item{padding:8px 12px;border-radius:8px;font-size:.7rem;line-height:1.5}
+.alert-item.crit{background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);color:#f87171}
+.alert-item.warn{background:rgba(245,158,11,.07);border:1px solid rgba(245,158,11,.2);color:#fbbf24}
+.alert-item.ok{background:rgba(34,197,94,.07);border:1px solid rgba(34,197,94,.2);color:#4ade80}
+
+/* CMP TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.sc{color:var(--stale)}.fc{color:var(--fresh)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 3 · Day 13</div>
+    <h1>Data Freshness in <span class="s">Stale</span> vs <span class="f">Fresh</span> RAG</h1>
+    <p class="sub">Why stale embeddings produce confident wrong answers</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-compare"  onclick="show('compare')">⚡ Stale vs Fresh</button>
+    <button class="tab t-timeline" onclick="show('timeline')">📅 Event Timeline</button>
+    <button class="tab t-monitor"  onclick="show('monitor')">📊 Freshness Monitor</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-compare"></div>
+    <div class="view" id="view-timeline"></div>
+    <div class="view" id="view-monitor"></div>
+  </div>
+</div>
+
+<script>
+// ── COMPARE VIEW ──────────────────────────────────────────────────────────
+const STALE_EVENTS = [
+  {text:'User u_4821 viewed /home. No issues.', age:'4h old', fresh:false},
+  {text:'User u_4821 viewed /pricing. Normal activity.', age:'4h old', fresh:false},
+  {text:'User u_4821 browsed docs. Healthy session.', age:'4h old', fresh:false},
+];
+const FRESH_EVENTS = [
+  {text:'User u_4821 hit 500 error on /checkout. Error 1.', age:'2min ago', fresh:true},
+  {text:'User u_4821 hit 500 error on /checkout. Error 2.', age:'4min ago', fresh:true},
+  {text:'User u_4821 clicked Upgrade to Pro. Intent: 0.82.', age:'6min ago', fresh:true},
+  {text:'User u_4821 hit 500 error. Churn risk: TRUE.', age:'8min ago', fresh:true},
+];
+const CMP_ROWS = [
+  ['Last embedding run', '4 hours ago', '< 5 seconds ago'],
+  ['Events in index', '3 (old, healthy state)', '4 (current, crisis state)'],
+  ['Errors shown', '0 errors', '3 errors (50% rate)'],
+  ['Churn risk', 'false (stale)', 'TRUE (correct)'],
+  ['LLM answer', '❌ "User appears healthy"', '✅ "HIGH churn risk — escalate"'],
+  ['Failure type', 'Silent — no error thrown', 'N/A — correct answer'],
+];
+
+function buildCompare() {
+  const c = document.getElementById('view-compare');
+  c.innerHTML = `
+    <div class="two-col">
+      <div class="pbox">
+        <div class="pbox-header stale">❌ Stale Vector Store (4h old)</div>
+        <div class="pbox-body stale-t">
+          <div style="font-size:.62rem;color:var(--dim);margin-bottom:8px">Query: "Is u_4821 having checkout issues?"</div>
+          ${STALE_EVENTS.map(e=>`<div class="event-item ev-stale">[${e.age}] ${e.text}</div>`).join('')}
+          <div style="margin-top:10px;padding:8px;border-radius:6px;background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);font-size:.68rem;color:#f87171">
+            LLM: "User u_4821 appears to be browsing normally. No errors or issues detected. No immediate action required."
+          </div>
+          <div style="margin-top:6px;font-size:.62rem;color:#7a3a3a">❌ WRONG — user has 3 errors and is at HIGH churn risk</div>
+        </div>
+      </div>
+      <div class="pbox">
+        <div class="pbox-header fresh">✅ Fresh Vector Store (< 5s old)</div>
+        <div class="pbox-body fresh-t">
+          <div style="font-size:.62rem;color:var(--dim);margin-bottom:8px">Query: "Is u_4821 having checkout issues?"</div>
+          ${FRESH_EVENTS.map(e=>`<div class="event-item ev-fresh">[${e.age}] ${e.text}</div>`).join('')}
+          <div style="margin-top:10px;padding:8px;border-radius:6px;background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);font-size:.68rem;color:#4ade80">
+            LLM: "User u_4821 is at HIGH churn risk. 3 checkout errors (50% rate). Upgrade intent blocked by failures. Escalate immediately."
+          </div>
+          <div style="margin-top:6px;font-size:.62rem;color:#3a7a5a">✅ CORRECT — based on events from the last few minutes</div>
+        </div>
+      </div>
+    </div>
+    <table class="cmp-table">
+      <thead><tr><th>Dimension</th><th style="color:var(--stale)">❌ Stale System</th><th style="color:var(--fresh)">✅ Fresh System</th></tr></thead>
+      <tbody>${CMP_ROWS.map(([d,s,f])=>`<tr><td>${d}</td><td class="sc">${s}</td><td class="fc">${f}</td></tr>`).join('')}</tbody>
+    </table>
+  `;
+}
+
+// ── TIMELINE VIEW ──────────────────────────────────────────────────────────
+const TL_ITEMS = [
+  {time:'t=0h',   event:'Embedding pipeline runs',       detail:'Vector store: 3 docs, all healthy. u_4821 has 0 errors.',  dc:'#22c55e', badge:'fresh',  label:'FRESH'},
+  {time:'t=1h',   event:'1,000 new events arrive',       detail:'Flink enriches → Pinot (queryable). Vector store: NOT updated.',  dc:'#f59e0b', badge:'warn',  label:'BATCH PENDING'},
+  {time:'t=2h',   event:'u_4821 hits first error',       detail:'Pinot: error_count=1. Vector store: still shows 0 errors.',  dc:'#ef4444', badge:'stale', label:'STALE'},
+  {time:'t=2h30', event:'u_4821 hits 3rd error',         detail:'Pinot: churn_risk=TRUE. Vector store: still shows "healthy".',  dc:'#ef4444', badge:'stale', label:'STALE'},
+  {time:'t=2h45', event:'Support agent queries system',  detail:'Vector store returns: "User appears healthy. No issues."',  dc:'#ef4444', badge:'stale', label:'WRONG ANSWER'},
+  {time:'t=4h',   event:'Batch embedding job runs',      detail:'Vector store finally updated. 2 hours of events now indexed.',  dc:'#22c55e', badge:'fresh', label:'TOO LATE'},
+];
+
+function buildTimeline() {
+  const c = document.getElementById('view-timeline');
+  c.innerHTML = `<div class="timeline" id="tl"></div>`;
+  const tl = document.getElementById('tl');
+  TL_ITEMS.forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'tl-item';
+    el.style.setProperty('--dc', item.dc);
+    const badgeCls = item.badge === 'fresh' ? 'badge-fresh' : item.badge === 'warn' ? 'badge-warn' : 'badge-stale';
+    el.innerHTML = `
+      <div class="tl-dot"></div>
+      <div class="tl-time">${item.time}</div>
+      <div class="tl-event">${item.event}<span class="tl-badge ${badgeCls}">${item.label}</span></div>
+      <div class="tl-detail">${item.detail}</div>
+    `;
+    tl.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 200);
+  });
+}
+
+// ── MONITOR VIEW ───────────────────────────────────────────────────────────
+function buildMonitor() {
+  const c = document.getElementById('view-monitor');
+  c.innerHTML = `
+    <div class="monitor-grid">
+      <div class="mcard"><div class="mcard-val" style="color:var(--stale)">4.2h</div><div class="mcard-lbl">Max Index Age</div></div>
+      <div class="mcard"><div class="mcard-val" style="color:var(--stale)">67%</div><div class="mcard-lbl">Stale Doc Ratio</div></div>
+      <div class="mcard"><div class="mcard-val" style="color:var(--warn)">14,400s</div><div class="mcard-lbl">P99 Embed Lag</div></div>
+    </div>
+    <div class="alert-list" id="alerts"></div>
+    <div style="margin-top:16px;font-size:.68rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Freshness Strategy Comparison</div>
+    <table class="cmp-table">
+      <thead><tr><th>Strategy</th><th>Freshness SLA</th><th>Lag</th><th>Cost</th><th>Use Case</th></tr></thead>
+      <tbody>
+        <tr><td>Batch (4h)</td><td class="sc">4 hours</td><td class="sc">14,400s</td><td class="fc">Low</td><td>Historical reports</td></tr>
+        <tr><td>Batch (1h)</td><td class="sc">1 hour</td><td class="sc">3,600s</td><td class="fc">Low</td><td>Hourly analytics</td></tr>
+        <tr><td>Micro-batch (5min)</td><td style="color:var(--warn)">5 min</td><td style="color:var(--warn)">300s</td><td style="color:var(--warn)">Medium</td><td>Near-real-time</td></tr>
+        <tr><td>Event-driven</td><td class="fc">&lt; 5s</td><td class="fc">&lt; 5s</td><td style="color:var(--warn)">Medium</td><td>Support, fraud, churn</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  const alerts = [
+    {cls:'crit', msg:'🔴 CRITICAL: stale_doc_ratio=67% exceeds threshold of 5%'},
+    {cls:'crit', msg:'🔴 CRITICAL: P99 embedding lag 14,400s exceeds threshold of 300s'},
+    {cls:'warn', msg:'🟡 WARNING: index_age_max=4.2h exceeds threshold of 1h'},
+    {cls:'ok',   msg:'✅ OK: model_version consistent across all documents'},
+  ];
+  const al = document.getElementById('alerts');
+  alerts.forEach((a, i) => {
+    const el = document.createElement('div');
+    el.className = `alert-item ${a.cls}`;
+    el.textContent = a.msg;
+    el.style.opacity = '0';
+    el.style.transform = 'translateX(-6px)';
+    el.style.transition = 'all .3s';
+    al.appendChild(el);
+    setTimeout(() => { el.style.opacity='1'; el.style.transform='translateX(0)'; }, i*150);
+  });
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='compare')  buildCompare();
+  else if(type==='timeline') buildTimeline();
+  else buildMonitor();
+}
+
+show('compare');
+</script>
+</body>
+</html>

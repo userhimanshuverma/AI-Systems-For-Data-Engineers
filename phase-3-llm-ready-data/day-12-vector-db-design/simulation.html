@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 12 — Vector Storage Design</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --vec:#a855f7;--good:#22c55e;--bad:#ef4444;
+  --kafka:#00e5ff;--pinot:#4d9fff;--bal:#f59e0b;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(168,85,247,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--vec)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-chunk.on{color:var(--bal);border-color:var(--bal);box-shadow:0 0 14px rgba(245,158,11,.25)}
+.tab.t-index.on{color:var(--vec);border-color:var(--vec);box-shadow:0 0 14px rgba(168,85,247,.25)}
+.tab.t-update.on{color:var(--good);border-color:var(--good);box-shadow:0 0 14px rgba(34,197,94,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:500px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--vec),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(168,85,247,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* CHUNK VIEW */
+.chunk-controls{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.chunk-label{font-size:.68rem;color:var(--dim);font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.chunk-btn{padding:6px 14px;border-radius:6px;font-size:.68rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.chunk-btn:hover{color:var(--bal);border-color:var(--bal)}
+.chunk-btn.active{color:var(--bal);border-color:var(--bal);box-shadow:0 0 10px rgba(245,158,11,.2)}
+
+.chunk-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.chunk-grid{grid-template-columns:1fr}}
+.chunk-box{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.chunk-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.chunk-header.bad{background:rgba(239,68,68,.07);color:var(--bad);border-bottom:1px solid rgba(239,68,68,.12)}
+.chunk-header.good{background:rgba(34,197,94,.07);color:var(--good);border-bottom:1px solid rgba(34,197,94,.12)}
+.chunk-header.neu{background:rgba(245,158,11,.07);color:var(--bal);border-bottom:1px solid rgba(245,158,11,.12)}
+.chunk-body{padding:12px 14px;font-size:.7rem;line-height:1.7}
+.chunk-item{padding:4px 8px;border-radius:4px;margin-bottom:4px;font-family:monospace;font-size:.65rem;line-height:1.5}
+.chunk-item.bad-c{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);color:#7a3a3a}
+.chunk-item.good-c{background:rgba(34,197,94,.06);border:1px solid rgba(34,197,94,.15);color:#3a7a5a}
+.chunk-item.neu-c{background:rgba(245,158,11,.06);border:1px solid rgba(245,158,11,.15);color:#7a6a3a}
+.retrieval-result{margin-top:10px;padding:10px;border-radius:8px;border:1px solid var(--border);background:#060a16;font-size:.68rem}
+.rr-title{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.rr-item{padding:3px 0;border-bottom:1px solid #0a1020;font-family:monospace}
+.rr-item:last-child{border-bottom:none}
+.score-good{color:var(--good)}.score-bad{color:var(--bad)}.score-med{color:var(--bal)}
+
+/* INDEX VIEW */
+.index-canvas-wrap{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden;margin-bottom:14px}
+.index-info{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:600px){.index-info{grid-template-columns:1fr}}
+.icard{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center}
+.icard-val{font-size:1.1rem;font-weight:700;font-family:monospace;line-height:1}
+.icard-lbl{font-size:.6rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+
+/* UPDATE VIEW */
+.update-steps{display:flex;flex-direction:column;gap:10px}
+.ustep{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden;opacity:.35;transform:translateX(-6px);transition:all .35s}
+.ustep.in{opacity:1;transform:translateX(0)}
+.us-header{padding:9px 14px;font-size:.63rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.us-header.hash{background:rgba(34,197,94,.07);color:var(--good);border-bottom:1px solid rgba(34,197,94,.12)}
+.us-header.rebuild{background:rgba(239,68,68,.07);color:var(--bad);border-bottom:1px solid rgba(239,68,68,.12)}
+.us-header.version{background:rgba(77,159,255,.07);color:var(--pinot);border-bottom:1px solid rgba(77,159,255,.12)}
+.us-header.stale{background:rgba(245,158,11,.07);color:var(--bal);border-bottom:1px solid rgba(245,158,11,.12)}
+.us-body{padding:10px 14px;font-family:monospace;font-size:.68rem;line-height:1.7;color:#3a5a7a;white-space:pre-wrap}
+
+/* CMP TABLE */
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.gc{color:var(--good)}.bc{color:var(--bad)}.nc{color:var(--bal)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 3 · Day 12</div>
+    <h1>Vector <span>Storage</span> Design</h1>
+    <p class="sub">Chunking · Indexing · Update Strategies</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-chunk"  onclick="show('chunk')">📦 Chunking Strategy</button>
+    <button class="tab t-index"  onclick="show('index')">⚡ Index Design</button>
+    <button class="tab t-update" onclick="show('update')">🔄 Update Pipeline</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-chunk"></div>
+    <div class="view" id="view-index"></div>
+    <div class="view" id="view-update"></div>
+  </div>
+</div>
+
+<script>
+// ── CHUNK DATA ─────────────────────────────────────────────────────────────
+const TEXT = "User hit checkout error. Visited pricing 3 times. Clicked upgrade. Payment failed. Submitted support ticket. Churn risk is high.";
+
+const CHUNKS = {
+  bad: {
+    label: '❌ Bad (char split, no overlap)',
+    cls: 'bad',
+    items: [
+      "User hit checkout error. Vis",
+      "ited pricing 3 times. Clicked",
+      " upgrade. Payment failed. Sub",
+      "mitted support ticket. Churn ",
+      "risk is high.",
+    ],
+    retrieval: [
+      {score:'0.0821', cls:'score-bad', text:'"User hit checkout error. Vis" — incomplete!'},
+      {score:'0.0412', cls:'score-bad', text:'"ited pricing 3 times. Clicked" — starts mid-word!'},
+    ],
+    note: '❌ Splits mid-word and mid-sentence. Incoherent chunks produce poor embeddings.',
+  },
+  fixed: {
+    label: '⚠️ Fixed-size (20 words, 5 overlap)',
+    cls: 'neu',
+    items: [
+      "User hit checkout error. Visited pricing 3 times. Clicked upgrade. Payment failed. Submitted support",
+      "Submitted support ticket. Churn risk is high.",
+    ],
+    retrieval: [
+      {score:'0.1834', cls:'score-med', text:'"User hit checkout error. Visited pricing..." — OK but mixed topics'},
+      {score:'0.0921', cls:'score-med', text:'"Submitted support ticket. Churn risk..." — OK'},
+    ],
+    note: '⚠️ Better than char split. Overlap helps. But first chunk mixes checkout + upgrade topics.',
+  },
+  semantic: {
+    label: '✅ Semantic (sentence boundaries)',
+    cls: 'good',
+    items: [
+      "User hit checkout error. Visited pricing 3 times.",
+      "Clicked upgrade. Payment failed.",
+      "Submitted support ticket. Churn risk is high.",
+    ],
+    retrieval: [
+      {score:'0.2341', cls:'score-good', text:'"User hit checkout error. Visited pricing 3 times." — precise!'},
+      {score:'0.1892', cls:'score-good', text:'"Clicked upgrade. Payment failed." — relevant!'},
+    ],
+    note: '✅ Each chunk is one coherent idea. Best retrieval precision for documents.',
+  },
+  event: {
+    label: '✅ Event-based (one event per chunk)',
+    cls: 'good',
+    items: [
+      "User u_4821 (free) hit 500 error on /checkout at 14:32. Churn: TRUE.",
+      "User u_4821 clicked Upgrade to Pro on /pricing at 14:38.",
+      "User u_4821 submitted support ticket: checkout keeps failing.",
+    ],
+    retrieval: [
+      {score:'0.2891', cls:'score-good', text:'"User u_4821 hit 500 error on /checkout..." — perfect match!'},
+      {score:'0.2134', cls:'score-good', text:'"User u_4821 submitted support ticket..." — highly relevant!'},
+    ],
+    note: '✅ Best for streaming data. Each event is already a complete, coherent unit.',
+  },
+};
+
+let activeChunk = 'semantic';
+
+function buildChunk() {
+  const c = document.getElementById('view-chunk');
+  c.innerHTML = `
+    <div class="chunk-controls">
+      <span class="chunk-label">Strategy:</span>
+      ${Object.entries(CHUNKS).map(([k,v]) =>
+        `<button class="chunk-btn${k===activeChunk?' active':''}" onclick="selectChunk('${k}')">${v.label}</button>`
+      ).join('')}
+    </div>
+    <div class="chunk-grid" id="chunk-grid"></div>
+  `;
+  renderChunkGrid();
+}
+
+function selectChunk(key) {
+  activeChunk = key;
+  buildChunk();
+}
+
+function renderChunkGrid() {
+  const d = CHUNKS[activeChunk];
+  document.getElementById('chunk-grid').innerHTML = `
+    <div class="chunk-box">
+      <div class="chunk-header ${d.cls}">Chunks Produced (${d.items.length})</div>
+      <div class="chunk-body">
+        ${d.items.map((item,i) => `<div class="chunk-item ${d.cls}-c">[${i+1}] "${item}"</div>`).join('')}
+        <div style="margin-top:8px;font-size:.65rem;color:#3a5a7a">${d.note}</div>
+      </div>
+    </div>
+    <div class="chunk-box">
+      <div class="chunk-header ${d.cls}">Retrieval Results — Query: "checkout errors"</div>
+      <div class="chunk-body">
+        <div class="retrieval-result">
+          <div class="rr-title">Top-2 matches:</div>
+          ${d.retrieval.map(r => `<div class="rr-item"><span class="${r.cls}">${r.score}</span>  ${r.text}</div>`).join('')}
+        </div>
+        <table class="cmp-table" style="margin-top:10px">
+          <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td>Chunks</td><td class="${d.cls==='good'?'gc':d.cls==='bad'?'bc':'nc'}">${d.items.length}</td></tr>
+            <tr><td>Avg length</td><td>${Math.round(d.items.reduce((s,i)=>s+i.length,0)/d.items.length)} chars</td></tr>
+            <tr><td>Coherent</td><td class="${d.cls==='good'?'gc':'bc'}">${d.cls==='good'?'✅ Yes':'❌ No'}</td></tr>
+            <tr><td>Retrieval</td><td class="${d.cls==='good'?'gc':d.cls==='bad'?'bc':'nc'}">${d.cls==='good'?'✅ Precise':d.cls==='bad'?'❌ Poor':'⚠️ Moderate'}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// ── INDEX VIEW ─────────────────────────────────────────────────────────────
+function buildIndex() {
+  const c = document.getElementById('view-index');
+  c.innerHTML = `
+    <div class="index-canvas-wrap">
+      <canvas id="idx-canvas" width="800" height="260"></canvas>
+    </div>
+    <div class="index-info">
+      <div class="icard"><div class="icard-val" style="color:var(--bad)">O(n)</div><div class="icard-lbl">Brute Force</div></div>
+      <div class="icard"><div class="icard-val" style="color:var(--good)">O(log n)</div><div class="icard-lbl">HNSW Search</div></div>
+      <div class="icard"><div class="icard-val" style="color:var(--vec)">~1ms</div><div class="icard-lbl">1M vectors @ HNSW</div></div>
+    </div>
+    <table class="cmp-table">
+      <thead><tr><th>Index</th><th>Build Time</th><th>Query Latency</th><th>Memory</th><th>Accuracy</th><th>Best For</th></tr></thead>
+      <tbody>
+        <tr><td>Brute Force</td><td class="nc">None</td><td class="bc">O(n) — slow</td><td class="gc">Low</td><td class="gc">100%</td><td>< 10K vectors</td></tr>
+        <tr><td>HNSW</td><td class="nc">Moderate</td><td class="gc">~1–10ms</td><td class="bc">High</td><td class="gc">95–99%</td><td>< 50M vectors ✅</td></tr>
+        <tr><td>IVF</td><td class="gc">Fast</td><td class="nc">~5–20ms</td><td class="gc">Low</td><td class="nc">90–98%</td><td>> 50M vectors</td></tr>
+      </tbody>
+    </table>
+  `;
+  setTimeout(drawHNSW, 50);
+}
+
+function drawHNSW() {
+  const canvas = document.getElementById('idx-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle = '#040810';
+  ctx.fillRect(0,0,W,H);
+
+  const layers = [
+    {y:0.15, nodes:[{x:0.15},{x:0.50},{x:0.85}], label:'Layer 2 (coarse)'},
+    {y:0.45, nodes:[{x:0.10},{x:0.25},{x:0.40},{x:0.55},{x:0.70},{x:0.85}], label:'Layer 1'},
+    {y:0.78, nodes:[{x:0.05},{x:0.13},{x:0.21},{x:0.29},{x:0.37},{x:0.45},{x:0.53},{x:0.61},{x:0.69},{x:0.77},{x:0.85},{x:0.93}], label:'Layer 0 (all vectors)'},
+  ];
+
+  const pad = 40;
+  function cx(nx){ return pad + nx*(W-pad*2); }
+  function cy(ny){ return pad + ny*(H-pad*2); }
+
+  // Draw edges between layers
+  layers.forEach((layer, li) => {
+    if (li < layers.length-1) {
+      const next = layers[li+1];
+      layer.nodes.forEach(n => {
+        // Connect to 2 nearest in next layer
+        next.nodes.slice(0,2).forEach(nn => {
+          ctx.strokeStyle = 'rgba(168,85,247,0.15)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(cx(n.x), cy(layer.y));
+          ctx.lineTo(cx(nn.x), cy(next.y));
+          ctx.stroke();
+        });
+      });
+    }
+    // Horizontal edges within layer
+    for(let i=0;i<layer.nodes.length-1;i++){
+      ctx.strokeStyle = 'rgba(168,85,247,0.3)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(cx(layer.nodes[i].x), cy(layer.y));
+      ctx.lineTo(cx(layer.nodes[i+1].x), cy(layer.y));
+      ctx.stroke();
+    }
+  });
+
+  // Draw nodes
+  layers.forEach((layer, li) => {
+    layer.nodes.forEach((n, ni) => {
+      const isQuery = li===2 && ni===5;
+      const isPath  = (li===0 && ni===1) || (li===1 && ni===3) || (li===2 && ni===5);
+      ctx.beginPath();
+      ctx.arc(cx(n.x), cy(layer.y), isQuery?8:5, 0, Math.PI*2);
+      ctx.fillStyle = isQuery ? '#22c55e' : isPath ? '#a855f7' : '#1e3a5f';
+      ctx.shadowColor = isQuery ? '#22c55e' : isPath ? '#a855f7' : 'transparent';
+      ctx.shadowBlur = isPath ? 10 : 0;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+    // Layer label
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'rgba(168,85,247,0.5)';
+    ctx.fillText(layer.label, 8, cy(layer.y)+4);
+  });
+
+  // Query path highlight
+  const path = [{l:0,n:1},{l:1,n:3},{l:2,n:5}];
+  for(let i=0;i<path.length-1;i++){
+    const from = layers[path[i].l].nodes[path[i].n];
+    const to   = layers[path[i+1].l].nodes[path[i+1].n];
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.moveTo(cx(from.x), cy(layers[path[i].l].y));
+    ctx.lineTo(cx(to.x), cy(layers[path[i+1].l].y));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Legend
+  ctx.font = '10px monospace';
+  ctx.fillStyle = '#22c55e'; ctx.fillText('● Query entry point', W-180, 20);
+  ctx.fillStyle = '#a855f7'; ctx.fillText('● Search path', W-180, 36);
+  ctx.fillStyle = '#1e3a5f'; ctx.fillText('● Vector node', W-180, 52);
+}
+
+// ── UPDATE VIEW ────────────────────────────────────────────────────────────
+const UPDATE_STEPS = [
+  {cls:'hash', label:'Strategy 1 — Content Hash Tracking (Incremental)',
+   body:`Event enrichment changes: churn_risk FALSE → TRUE
+Old text: "User u_4821 hit error. Churn: FALSE."  hash=fd15ce1f
+New text: "User u_4821 hit error. Churn: TRUE."   hash=a3b2c1d0
+
+Hash changed → re-embed triggered automatically
+Cost: 1 API call (only changed doc)
+✅ Best for: enrichment updates, individual event changes`},
+  {cls:'rebuild', label:'Strategy 2 — Full Collection Rebuild (Model Upgrade)',
+   body:`Trigger: upgrading from text-embedding-ada-002 → text-embedding-3-small
+
+⚠️ Problem: old and new model vectors are INCOMPATIBLE
+   Query (new model) vs docs (old model) = meaningless scores
+
+Solution:
+  1. Create new collection: user_events_v2
+  2. Re-embed ALL documents with new model
+  3. Switch queries to v2
+  4. Delete v1
+Cost: N API calls (entire collection)
+❌ Required for: model upgrades, major context engineering changes`},
+  {cls:'version', label:'Strategy 3 — Versioned Collections (Zero-Downtime)',
+   body:`Phase 1: v1 live → start building v2 in parallel
+Phase 2: new events → both v1 and v2
+Phase 3: v2 complete → cut over queries to v2
+Phase 4: validate v2 → delete v1
+
+✅ Zero downtime — no gap in query service
+✅ Rollback possible — v1 still available during validation
+Cost: 2x storage during migration period`},
+  {cls:'stale', label:'⚠️ Danger — Stale Embeddings (Silent Wrong Results)',
+   body:`Scenario: churn_risk updated FALSE → TRUE, embedding NOT updated
+
+Query: "users at high churn risk"
+Result: score=0.08 "User u_4821... Churn: FALSE"  ← WRONG!
+
+The LLM receives: "no churn risk detected"
+Reality: user IS at high churn risk
+
+Stale embeddings don't throw errors — they silently return wrong results.
+This is the most dangerous failure mode in RAG systems.
+Solution: Always use content hash tracking.`},
+];
+
+function buildUpdate() {
+  const c = document.getElementById('view-update');
+  c.innerHTML = '<div class="update-steps" id="update-steps"></div>';
+  const steps = document.getElementById('update-steps');
+  UPDATE_STEPS.forEach((s,i) => {
+    const el = document.createElement('div');
+    el.className = 'ustep';
+    el.innerHTML = `<div class="us-header ${s.cls}">${s.label}</div><div class="us-body">${s.body}</div>`;
+    steps.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 200);
+  });
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='chunk')  buildChunk();
+  else if(type==='index')  buildIndex();
+  else buildUpdate();
+}
+
+show('chunk');
+</script>
+</body>
+</html>
