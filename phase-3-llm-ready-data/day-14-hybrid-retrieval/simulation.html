@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 14 — Hybrid Retrieval</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --pinot:#4d9fff;--vec:#a855f7;--llm:#f472b6;
+  --good:#22c55e;--bad:#ef4444;--bal:#f59e0b;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(77,159,255,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 .p{color:var(--pinot)} h1 .v{color:var(--vec)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-hybrid.on{color:var(--bal);border-color:var(--bal);box-shadow:0 0 14px rgba(245,158,11,.25)}
+.tab.t-compare.on{color:var(--good);border-color:var(--good);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-flow.on{color:var(--llm);border-color:var(--llm);box-shadow:0 0 14px rgba(244,114,182,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--bal),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* HYBRID VIEW */
+.hybrid-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:800px){.hybrid-grid{grid-template-columns:1fr}}
+.hbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.hbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.hbox-header.pinot{background:rgba(77,159,255,.07);color:var(--pinot);border-bottom:1px solid rgba(77,159,255,.15)}
+.hbox-header.vec{background:rgba(168,85,247,.07);color:var(--vec);border-bottom:1px solid rgba(168,85,247,.15)}
+.hbox-header.llm{background:rgba(244,114,182,.07);color:var(--llm);border-bottom:1px solid rgba(244,114,182,.15)}
+.hbox-body{padding:12px 14px;font-size:.7rem;line-height:1.7}
+.metric-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #080e18;font-size:.68rem}
+.metric-row:last-child{border-bottom:none}
+.mk{color:#3a5a7a}.mv{color:#c8d0e8;font-family:monospace}
+.mv.bad{color:var(--bad)}.mv.good{color:var(--good)}.mv.warn{color:var(--bal)}
+.sem-item{padding:4px 0;border-bottom:1px solid #080e18;font-size:.65rem;font-family:monospace;color:#3a5a7a}
+.sem-item:last-child{border-bottom:none}
+.sem-score{color:var(--vec);font-weight:700;margin-right:6px}
+.llm-field{margin-bottom:8px}
+.llm-label{font-size:.6rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:2px}
+.llm-val{font-size:.72rem;color:#c8d0e8;line-height:1.5}
+.ev-item{font-size:.65rem;color:var(--good);padding:2px 0}
+.ev-item::before{content:'✅ ';color:var(--good)}
+
+/* QUERY INPUT */
+.query-bar{display:flex;gap:8px;margin-bottom:16px}
+.q-input{flex:1;background:#060a16;border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:.75rem;color:#c8d0e8;font-family:monospace;outline:none}
+.q-input:focus{border-color:var(--bal)}
+.q-btn{padding:8px 16px;border-radius:6px;font-size:.72rem;font-weight:700;cursor:pointer;border:1px solid var(--bal);background:rgba(245,158,11,.1);color:var(--bal);transition:all .2s}
+.q-btn:hover{background:rgba(245,158,11,.2)}
+.q-presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.preset{padding:4px 10px;border-radius:4px;font-size:.62rem;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.preset:hover{color:#7a9aba;border-color:#2a3a5a}
+
+/* COMPARE */
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.cmp-grid{grid-template-columns:1fr}}
+.cbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.cbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.cbox-header.vec-only{background:rgba(239,68,68,.07);color:var(--bad);border-bottom:1px solid rgba(239,68,68,.15)}
+.cbox-header.hybrid{background:rgba(34,197,94,.07);color:var(--good);border-bottom:1px solid rgba(34,197,94,.15)}
+.cbox-body{padding:12px 14px;font-size:.7rem;line-height:1.7}
+.cbox-body.bad-t{color:#7a3a3a}.cbox-body.good-t{color:#3a7a5a}
+
+/* FLOW */
+.flow-nodes{display:flex;align-items:center;justify-content:center;gap:0;padding:16px 0;overflow-x:auto;flex-wrap:nowrap}
+.fnode{min-width:90px;max-width:120px;padding:10px 8px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;flex-shrink:0;opacity:.35;transform:translateY(5px);transition:all .3s}
+.fnode.in{opacity:1;transform:translateY(0)}
+.fnode.lit{border-color:var(--nc,#f59e0b);box-shadow:0 0 16px rgba(var(--nr,245,158,11),.2)}
+.fn-icon{font-size:1.2rem;margin-bottom:4px;display:block;filter:drop-shadow(0 0 5px var(--nc,#f59e0b))}
+.fn-lbl{font-size:.56rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--nc,#f59e0b);margin-bottom:2px}
+.fn-name{font-size:.72rem;font-weight:600;color:#c8d0e8;margin-bottom:1px}
+.fn-sub{font-size:.56rem;color:var(--dim)}
+.farrow{width:24px;height:2px;flex-shrink:0;position:relative}
+.farrow::after{content:'';position:absolute;right:-4px;top:50%;transform:translateY(-50%);border-top:3px solid transparent;border-bottom:3px solid transparent;border-left:5px solid #1e3a5f}
+.farrow.lit{background:var(--bal);box-shadow:0 0 6px var(--bal)}.farrow.lit::after{border-left-color:var(--bal)}
+.flow-detail{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.fd-row{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.fd-row.in{opacity:1;transform:translateX(0)}
+.fd-label{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:3px}
+.fd-body{font-size:.68rem;color:#3a5a7a;font-family:monospace;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 3 · Day 14</div>
+    <h1>Hybrid Retrieval — <span class="p">Pinot</span> + <span class="v">Vector DB</span></h1>
+    <p class="sub">Structured facts + semantic context = complete LLM input</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-hybrid"  onclick="show('hybrid')">⚡ Hybrid Query</button>
+    <button class="tab t-compare" onclick="show('compare')">🔍 Vector-Only vs Hybrid</button>
+    <button class="tab t-flow"    onclick="show('flow')">🔄 Full Flow</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-hybrid"></div>
+    <div class="view" id="view-compare"></div>
+    <div class="view" id="view-flow"></div>
+  </div>
+</div>
+
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────
+const PINOT_DATA = {
+  churn:   {errors:5, rate:'50%', intent:0.82, churn:true,  plan:'free',  visits:3},
+  error:   {errors:5, rate:'50%', intent:0.82, churn:true,  plan:'free',  visits:3},
+  upgrade: {errors:5, rate:'50%', intent:0.82, churn:true,  plan:'free',  visits:3},
+};
+const VEC_DATA = {
+  churn:   ['User hit 500 error on /checkout. Churn risk: TRUE.','Clicked Upgrade to Pro. Intent: 0.82.','Support ticket: checkout keeps failing.','Hit 500 error on /checkout again.'],
+  error:   ['User hit 500 error on /checkout at 14:32.','Hit 500 error on /checkout at 14:38.','Support ticket: checkout keeps failing.','Hit 500 error on /checkout at 14:45.'],
+  upgrade: ['Clicked Upgrade to Pro on /pricing. Intent: 0.82.','Visited /pricing 3 times without converting.','Hit 500 error on /checkout after upgrade click.','Visited /pricing again after error.'],
+};
+const LLM_DATA = {
+  churn:   {summary:'User u_4821 (free plan) is at HIGH churn risk. 5 checkout errors (50% rate) are blocking a clear upgrade intent (0.82). They submitted a support ticket confirming the issue.',action:'escalate_checkout_fix',conf:0.96,evidence:['5 errors, 50% rate — Pinot','Intent score 0.82 — Pinot','Clicked Upgrade to Pro — Vector DB','Support ticket: checkout failing — Vector DB']},
+  error:   {summary:'User u_4821 has 5 checkout errors (50% error rate). All errors are 500 on /checkout — same endpoint, not transient. Support ticket submitted.',action:'escalate_to_engineering',conf:0.93,evidence:['5 errors, 50% rate — Pinot','All errors on /checkout — Vector DB','Support ticket submitted — Vector DB']},
+  upgrade: {summary:'User u_4821 shows strong upgrade intent (score: 0.82) with 3 pricing page visits. However, checkout failures are blocking conversion.',action:'send_upgrade_offer',conf:0.88,evidence:['Intent score 0.82 — Pinot','3 pricing visits — Pinot','Clicked Upgrade to Pro — Vector DB','Checkout errors blocking conversion — Vector DB']},
+};
+
+const PRESETS = [
+  {label:'Churn risk?',    query:'Why is user u_4821 at risk of churning?',    key:'churn'},
+  {label:'Checkout errors?',query:'What checkout errors has u_4821 experienced?',key:'error'},
+  {label:'Upgrade intent?', query:'Is user u_4821 likely to upgrade?',          key:'upgrade'},
+];
+
+let currentKey = 'churn';
+
+function buildHybrid() {
+  const c = document.getElementById('view-hybrid');
+  c.innerHTML = `
+    <div class="query-bar">
+      <input class="q-input" id="q-input" value="${PRESETS[0].query}" readonly/>
+      <button class="q-btn" onclick="runQuery()">▶ Run</button>
+    </div>
+    <div class="q-presets" id="presets"></div>
+    <div class="hybrid-grid" id="hybrid-grid"></div>
+  `;
+  const ps = document.getElementById('presets');
+  PRESETS.forEach((p,i) => {
+    const btn = document.createElement('button');
+    btn.className = 'preset' + (i===0?' active':'');
+    btn.textContent = p.label;
+    btn.onclick = () => {
+      document.getElementById('q-input').value = p.query;
+      currentKey = p.key;
+      document.querySelectorAll('.preset').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      renderResults(p.key);
+    };
+    ps.appendChild(btn);
+  });
+  renderResults('churn');
+}
+
+function runQuery() {
+  renderResults(currentKey);
+}
+
+function renderResults(key) {
+  const p = PINOT_DATA[key];
+  const v = VEC_DATA[key];
+  const l = LLM_DATA[key];
+  const grid = document.getElementById('hybrid-grid');
+  grid.innerHTML = `
+    <div class="hbox">
+      <div class="hbox-header pinot">🔷 Apache Pinot — Structured</div>
+      <div class="hbox-body">
+        <div class="metric-row"><span class="mk">session_errors</span><span class="mv ${p.errors>3?'bad':'good'}">${p.errors}</span></div>
+        <div class="metric-row"><span class="mk">error_rate</span><span class="mv ${p.errors>3?'bad':'good'}">${p.rate}</span></div>
+        <div class="metric-row"><span class="mk">intent_score</span><span class="mv ${p.intent>0.6?'good':'warn'}">${p.intent}</span></div>
+        <div class="metric-row"><span class="mk">churn_risk</span><span class="mv ${p.churn?'bad':'good'}">${p.churn?'TRUE':'FALSE'}</span></div>
+        <div class="metric-row"><span class="mk">plan</span><span class="mv">${p.plan}</span></div>
+        <div class="metric-row"><span class="mk">pricing_visits</span><span class="mv">${p.visits}</span></div>
+        <div style="margin-top:8px;font-size:.6rem;color:var(--dim)">Latency: ~68ms | Data age: ~1s</div>
+      </div>
+    </div>
+    <div class="hbox">
+      <div class="hbox-header vec">🧠 Vector DB — Semantic</div>
+      <div class="hbox-body">
+        ${v.map((t,i)=>`<div class="sem-item"><span class="sem-score">top-${i+1}</span>${t}</div>`).join('')}
+        <div style="margin-top:8px;font-size:.6rem;color:var(--dim)">Latency: ~50ms | Semantic similarity search</div>
+      </div>
+    </div>
+    <div class="hbox">
+      <div class="hbox-header llm">✨ LLM Response — Hybrid Context</div>
+      <div class="hbox-body">
+        <div class="llm-field"><div class="llm-label">Summary</div><div class="llm-val">${l.summary}</div></div>
+        <div class="llm-field"><div class="llm-label">Action</div><div class="llm-val" style="color:var(--good)">${l.action}</div></div>
+        <div class="llm-field"><div class="llm-label">Confidence</div><div class="llm-val">${(l.conf*100).toFixed(0)}%</div></div>
+        <div class="llm-field"><div class="llm-label">Evidence</div>${l.evidence.map(e=>`<div class="ev-item">${e}</div>`).join('')}</div>
+      </div>
+    </div>
+  `;
+}
+
+// ── COMPARE VIEW ──────────────────────────────────────────────────────────
+function buildCompare() {
+  const c = document.getElementById('view-compare');
+  c.innerHTML = `
+    <div class="cmp-grid">
+      <div class="cbox">
+        <div class="cbox-header vec-only">❌ Vector-Only Retrieval</div>
+        <div class="cbox-body bad-t">
+          <b>Retrieved context:</b><br>
+          - "User hit error on /checkout"<br>
+          - "User clicked Upgrade to Pro"<br>
+          - "User visited /pricing"<br>
+          - "User submitted support ticket"<br><br>
+          <b>Missing:</b> error count, error rate, intent score, churn flag<br><br>
+          <b>LLM response:</b><br>
+          "User appears to have checkout issues and upgrade intent. They may be at risk of churning."<br><br>
+          <span style="color:var(--bad);font-size:.65rem">❌ Vague. No numbers. LLM may hallucinate counts. Not actionable.</span>
+        </div>
+      </div>
+      <div class="cbox">
+        <div class="cbox-header hybrid">✅ Hybrid Retrieval</div>
+        <div class="cbox-body good-t">
+          <b>Pinot metrics:</b> errors=5, rate=50%, intent=0.82, churn=TRUE<br>
+          <b>Vector context:</b><br>
+          - "Hit 500 error on /checkout. Churn risk: TRUE."<br>
+          - "Clicked Upgrade to Pro. Intent: 0.82."<br>
+          - "Support ticket: checkout keeps failing."<br><br>
+          <b>LLM response:</b><br>
+          "User u_4821 (free plan) is at HIGH churn risk. 5 checkout errors (50% rate) are blocking upgrade intent (0.82). Support ticket confirms. Escalate checkout fix immediately."<br><br>
+          <span style="color:var(--good);font-size:.65rem">✅ Specific numbers. Behavioral story. Actionable recommendation.</span>
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:12px;border-radius:8px;border:1px solid rgba(245,158,11,.2);background:rgba(245,158,11,.04);font-size:.73rem;color:#7a6a3a;line-height:1.6">
+      <b style="color:var(--bal)">Key Insight:</b> Pinot provides the facts (50% error rate, intent score 0.82). The vector DB provides the story (what happened, what the user said). The LLM needs both to produce a response that is accurate AND insightful. Neither alone is sufficient.
+    </div>
+  `;
+}
+
+// ── FLOW VIEW ─────────────────────────────────────────────────────────────
+const FLOW_NODES = [
+  {id:'q',  icon:'💬', lbl:'Query',   name:'User Query',      sub:'natural language',    nc:'#94a3b8',nr:'148,163,184'},
+  {id:'qp', icon:'🔍', lbl:'Parser',  name:'Query Parser',    sub:'intent + user_id',    nc:'#f59e0b',nr:'245,158,11'},
+  {id:'pt', icon:'🔷', lbl:'Pinot',   name:'Structured',      sub:'SQL → metrics',       nc:'#4d9fff',nr:'77,159,255'},
+  {id:'vs', icon:'🧠', lbl:'Vector',  name:'Semantic',        sub:'embed → top-k',       nc:'#a855f7',nr:'168,85,247'},
+  {id:'mg', icon:'⚙️', lbl:'Merger',  name:'Context Merge',   sub:'format + dedupe',     nc:'#f59e0b',nr:'245,158,11'},
+  {id:'lm', icon:'✨', lbl:'LLM',     name:'Response',        sub:'facts + story',       nc:'#f472b6',nr:'244,114,182'},
+];
+const FLOW_DETAILS = [
+  {cls:'pinot', label:'Pinot SQL Query', body:`SELECT error_rate, intent_score, churn_risk\nFROM user_events_realtime\nWHERE user_id = 'u_4821' AND ts > ago('7d')\n→ {error_rate:0.50, intent:0.82, churn:true}`},
+  {cls:'vec',   label:'Vector Search',  body:`embed("checkout errors and churn risk")\n→ search(filter={user_id:"u_4821"}, top_k=4)\n→ ["hit 500 error on /checkout", "clicked Upgrade to Pro", ...]`},
+  {cls:'llm',   label:'Merged Context → LLM', body:`[STRUCTURED] error_rate=50%, intent=0.82, churn=TRUE\n[SEMANTIC]   "hit 500 error", "clicked Upgrade to Pro", "support ticket"\n[QUERY]      "Why is u_4821 at risk?"\n→ LLM: "HIGH churn risk. Escalate checkout fix."`},
+];
+
+function buildFlow() {
+  const c = document.getElementById('view-flow');
+  c.innerHTML = '';
+  const row = document.createElement('div');
+  row.className = 'flow-nodes';
+  FLOW_NODES.forEach((n,i) => {
+    if(i>0){const a=document.createElement('div');a.className='farrow';a.id=`fa-${i}`;row.appendChild(a);}
+    const el=document.createElement('div');
+    el.className='fnode';el.id=`fn-${n.id}`;
+    el.style.setProperty('--nc',n.nc);el.style.setProperty('--nr',n.nr);
+    el.innerHTML=`<span class="fn-icon">${n.icon}</span><div class="fn-lbl">${n.lbl}</div><div class="fn-name">${n.name}</div><div class="fn-sub">${n.sub}</div>`;
+    row.appendChild(el);
+    setTimeout(()=>{el.classList.add('in','lit');if(i>0)document.getElementById(`fa-${i}`)?.classList.add('lit');},i*150);
+  });
+  c.appendChild(row);
+  const det=document.createElement('div');det.className='flow-detail';
+  FLOW_DETAILS.forEach((d,i)=>{
+    const el=document.createElement('div');el.className='fd-row';
+    const hcls=d.cls==='pinot'?'var(--pinot)':d.cls==='vec'?'var(--vec)':'var(--llm)';
+    el.innerHTML=`<div class="fd-label" style="color:${hcls}">${d.label}</div><div class="fd-body">${d.body}</div>`;
+    det.appendChild(el);
+    setTimeout(()=>el.classList.add('in'),FLOW_NODES.length*150+i*200);
+  });
+  c.appendChild(det);
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='hybrid') buildHybrid();
+  else if(type==='compare') buildCompare();
+  else buildFlow();
+}
+
+show('hybrid');
+</script>
+</body>
+</html>
