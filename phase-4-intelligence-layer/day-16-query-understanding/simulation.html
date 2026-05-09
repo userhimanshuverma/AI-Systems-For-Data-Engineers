@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 16 — Query Understanding Layer</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --intent:#f59e0b;--entity:#00e5ff;--router:#a855f7;
+  --pinot:#4d9fff;--vec:#22c55e;--llm:#f472b6;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(245,158,11,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--intent)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--intent),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+/* QUERY INPUT */
+.query-section{margin-bottom:20px}
+.q-label{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.q-bar{display:flex;gap:8px;margin-bottom:10px}
+.q-input{flex:1;background:#060a16;border:1px solid var(--border);border-radius:6px;padding:9px 14px;font-size:.78rem;color:#c8d0e8;font-family:monospace;outline:none;transition:border-color .2s}
+.q-input:focus{border-color:var(--intent)}
+.q-btn{padding:9px 18px;border-radius:6px;font-size:.72rem;font-weight:700;cursor:pointer;border:1px solid var(--intent);background:rgba(245,158,11,.1);color:var(--intent);transition:all .2s}
+.q-btn:hover{background:rgba(245,158,11,.2)}
+.presets{display:flex;gap:6px;flex-wrap:wrap}
+.preset{padding:4px 10px;border-radius:4px;font-size:.62rem;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.preset:hover{color:#7a9aba;border-color:#2a3a5a}
+.preset.active{color:var(--intent);border-color:var(--intent)}
+
+/* PIPELINE DISPLAY */
+.pipeline-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:20px}
+@media(max-width:800px){.pipeline-grid{grid-template-columns:1fr}}
+
+.stage{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden;opacity:.35;transform:translateY(5px);transition:all .35s}
+.stage.active{opacity:1;transform:translateY(0)}
+.stage-header{padding:9px 14px;font-size:.63rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.stage-header.intent{background:rgba(245,158,11,.07);color:var(--intent);border-bottom:1px solid rgba(245,158,11,.12)}
+.stage-header.entity{background:rgba(0,229,255,.07);color:var(--entity);border-bottom:1px solid rgba(0,229,255,.12)}
+.stage-header.router{background:rgba(168,85,247,.07);color:var(--router);border-bottom:1px solid rgba(168,85,247,.12)}
+.stage-body{padding:12px 14px;font-size:.7rem;line-height:1.8}
+
+.field-row{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #080e18;font-size:.68rem}
+.field-row:last-child{border-bottom:none}
+.fk{color:#3a5a7a}.fv{color:#c8d0e8;font-family:monospace}
+.fv.yes{color:var(--vec)}.fv.no{color:#3a3a3a}.fv.warn{color:var(--intent)}
+
+/* RETRIEVAL PLAN */
+.plan-section{margin-top:16px}
+.plan-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:600px){.plan-grid{grid-template-columns:1fr}}
+.plan-box{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px}
+.plan-title{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:8px}
+.plan-title.pinot{color:var(--pinot)}.plan-title.vec{color:var(--vec)}
+.plan-item{font-size:.68rem;font-family:monospace;padding:2px 0;color:#3a5a7a}
+.plan-item .pk{color:#4a6a8a}.plan-item .pv{color:#c8d0e8}
+
+/* ROUTING COMPARISON */
+.routing-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:16px}
+.routing-table th{padding:8px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.routing-table td{padding:8px 12px;border-bottom:1px solid #080e18;vertical-align:middle}
+.routing-table tr:last-child td{border-bottom:none}
+.routing-table td:first-child{color:var(--intent);font-weight:600;font-size:.65rem}
+.badge-yes{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.6rem;font-weight:700;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--vec)}
+.badge-no{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.6rem;font-weight:700;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:#ef4444}
+.badge-num{display:inline-block;padding:1px 6px;border-radius:4px;font-size:.6rem;font-weight:700;background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.2);color:var(--router)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 4 · Day 16</div>
+    <h1>Query <span>Understanding</span> Layer</h1>
+    <p class="sub">Raw query → Intent → Entities → Retrieval Plan</p>
+  </header>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+
+    <div class="query-section">
+      <div class="q-label">Enter a query to see how it's parsed</div>
+      <div class="q-bar">
+        <input class="q-input" id="q-input" type="text" value="Which free-plan users are most at risk this week?" placeholder="Enter a natural language query..."/>
+        <button class="q-btn" onclick="parse()">▶ Parse</button>
+      </div>
+      <div class="presets" id="presets"></div>
+    </div>
+
+    <div class="pipeline-grid" id="pipeline-grid">
+      <div class="stage" id="stage-intent">
+        <div class="stage-header intent">🎯 Step 1 — Intent Classification</div>
+        <div class="stage-body" id="intent-body">Run a query to see intent classification.</div>
+      </div>
+      <div class="stage" id="stage-entity">
+        <div class="stage-header entity">🔍 Step 2 — Entity Extraction</div>
+        <div class="stage-body" id="entity-body">Run a query to see entity extraction.</div>
+      </div>
+      <div class="stage" id="stage-router">
+        <div class="stage-header router">⚙️ Step 3 — Retrieval Routing</div>
+        <div class="stage-body" id="router-body">Run a query to see retrieval plan.</div>
+      </div>
+    </div>
+
+    <div class="plan-section" id="plan-section" style="display:none">
+      <div style="font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:10px">Retrieval Plan</div>
+      <div class="plan-grid" id="plan-grid"></div>
+    </div>
+
+    <div id="routing-section" style="display:none">
+      <div style="font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:16px 0 8px">Intent → Strategy Routing</div>
+      <table class="routing-table" id="routing-table"></table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── QUERY DEFINITIONS ──────────────────────────────────────────────────────
+const QUERIES = [
+  {
+    label: 'Churn risk',
+    query: 'Which free-plan users are most at risk this week?',
+    intent: 'churn_analysis', conf: 0.80,
+    signals: ['at risk', 'risk'],
+    entities: {user_id:'None', time:'168h (this week)', plan:'free', segment:'None', event_type:'None', risk_flag:'true'},
+    plan: {use_pinot:true, use_vector:true, pinot_filters:"plan=free, churn_risk=true", pinot_time:'168h', pinot_limit:10, vector_query:'churn risk behavior errors disengagement free', top_k:5, freshness:'60s', tokens:400},
+  },
+  {
+    label: 'Error investigation',
+    query: 'Show me all errors for user u_4821 in the last 2 hours',
+    intent: 'error_investigation', conf: 0.95,
+    signals: ['errors', 'error'],
+    entities: {user_id:'u_4821', time:'2h (last 2 hours)', plan:'None', segment:'None', event_type:'error', risk_flag:'false'},
+    plan: {use_pinot:true, use_vector:true, pinot_filters:"user_id=u_4821, has_errors=true", pinot_time:'2h', pinot_limit:1, vector_query:'error failure crash exception u_4821', top_k:3, freshness:'5s', tokens:200},
+  },
+  {
+    label: 'Upgrade intent',
+    query: 'Who is most likely to upgrade to pro this month?',
+    intent: 'upgrade_analysis', conf: 0.80,
+    signals: ['upgrade', 'pro plan'],
+    entities: {user_id:'None', time:'720h (this month)', plan:'pro', segment:'None', event_type:'purchase', risk_flag:'false'},
+    plan: {use_pinot:true, use_vector:true, pinot_filters:"plan=pro, intent_score_min=0.5", pinot_time:'720h', pinot_limit:10, vector_query:'upgrade intent pricing page feature limit pro', top_k:3, freshness:'3600s', tokens:300},
+  },
+  {
+    label: 'System health',
+    query: 'What is the current system error rate?',
+    intent: 'operational', conf: 0.85,
+    signals: ['current error rate'],
+    entities: {user_id:'None', time:'24h (default)', plan:'None', segment:'None', event_type:'error', risk_flag:'false'},
+    plan: {use_pinot:true, use_vector:false, pinot_filters:"has_errors=true", pinot_time:'24h', pinot_limit:10, vector_query:'N/A (Pinot only)', top_k:2, freshness:'1s', tokens:100},
+  },
+  {
+    label: 'New user retention',
+    query: 'How engaged are our new users in the last 7 days?',
+    intent: 'retention_analysis', conf: 0.75,
+    signals: ['engaged', 'new users'],
+    entities: {user_id:'None', time:'168h (last 7 days)', plan:'None', segment:'new_users', event_type:'session', risk_flag:'false'},
+    plan: {use_pinot:true, use_vector:true, pinot_filters:"segment=new_users, churn_risk=true", pinot_time:'168h', pinot_limit:10, vector_query:'engagement session activity retention new_users', top_k:5, freshness:'86400s', tokens:400},
+  },
+];
+
+const ROUTING_ROWS = [
+  ['error_investigation', true, true, 3, '5s',     200],
+  ['churn_analysis',      true, true, 5, '60s',    400],
+  ['upgrade_analysis',    true, true, 3, '3600s',  300],
+  ['retention_analysis',  true, true, 5, '86400s', 400],
+  ['operational',         true, false,2, '1s',     100],
+  ['general',             false,true, 3, '3600s',  200],
+];
+
+// ── BUILD PRESETS ──────────────────────────────────────────────────────────
+const presetsEl = document.getElementById('presets');
+QUERIES.forEach((q, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'preset' + (i===0?' active':'');
+  btn.textContent = q.label;
+  btn.onclick = () => {
+    document.getElementById('q-input').value = q.query;
+    document.querySelectorAll('.preset').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderQuery(q);
+  };
+  presetsEl.appendChild(btn);
+});
+
+// ── PARSE ──────────────────────────────────────────────────────────────────
+function parse() {
+  const val = document.getElementById('q-input').value.trim();
+  const match = QUERIES.find(q => q.query.toLowerCase() === val.toLowerCase());
+  if (match) {
+    renderQuery(match);
+  } else {
+    // Generic fallback
+    renderQuery({
+      query: val, intent: 'general', conf: 0.40, signals: [],
+      entities: {user_id:'None', time:'24h (default)', plan:'None', segment:'None', event_type:'None', risk_flag:'false'},
+      plan: {use_pinot:false, use_vector:true, pinot_filters:'None', pinot_time:'24h', pinot_limit:3, vector_query:val, top_k:3, freshness:'3600s', tokens:200},
+    });
+  }
+}
+
+function renderQuery(q) {
+  // Animate stages
+  ['stage-intent','stage-entity','stage-router'].forEach((id,i) => {
+    const el = document.getElementById(id);
+    el.classList.remove('active');
+    setTimeout(() => el.classList.add('active'), i * 200);
+  });
+
+  // Intent
+  setTimeout(() => {
+    document.getElementById('intent-body').innerHTML = `
+      <div class="field-row"><span class="fk">intent</span><span class="fv warn">${q.intent}</span></div>
+      <div class="field-row"><span class="fk">confidence</span><span class="fv">${(q.conf*100).toFixed(0)}%</span></div>
+      <div class="field-row"><span class="fk">signals</span><span class="fv">${q.signals.length ? q.signals.join(', ') : 'none → fallback'}</span></div>
+    `;
+  }, 50);
+
+  // Entities
+  setTimeout(() => {
+    const e = q.entities;
+    document.getElementById('entity-body').innerHTML = Object.entries(e).map(([k,v]) =>
+      `<div class="field-row"><span class="fk">${k}</span><span class="fv ${v==='None'||v==='false'?'no':v==='true'?'yes':''}">${v}</span></div>`
+    ).join('');
+  }, 250);
+
+  // Router
+  setTimeout(() => {
+    const p = q.plan;
+    document.getElementById('router-body').innerHTML = `
+      <div class="field-row"><span class="fk">use_pinot</span><span class="fv ${p.use_pinot?'yes':'no'}">${p.use_pinot?'✅ YES':'❌ NO'}</span></div>
+      <div class="field-row"><span class="fk">use_vector</span><span class="fv ${p.use_vector?'yes':'no'}">${p.use_vector?'✅ YES':'❌ NO'}</span></div>
+      <div class="field-row"><span class="fk">top_k</span><span class="fv">${p.top_k}</span></div>
+      <div class="field-row"><span class="fk">freshness_sla</span><span class="fv warn">${p.freshness}</span></div>
+      <div class="field-row"><span class="fk">token_budget</span><span class="fv">${p.tokens}</span></div>
+    `;
+  }, 450);
+
+  // Plan detail
+  setTimeout(() => {
+    const p = q.plan;
+    document.getElementById('plan-section').style.display = 'block';
+    document.getElementById('plan-grid').innerHTML = `
+      <div class="plan-box">
+        <div class="plan-title pinot">🔷 Pinot SQL Plan</div>
+        <div class="plan-item"><span class="pk">filters: </span><span class="pv">${p.pinot_filters}</span></div>
+        <div class="plan-item"><span class="pk">time:    </span><span class="pv">${p.pinot_time}</span></div>
+        <div class="plan-item"><span class="pk">limit:   </span><span class="pv">${p.pinot_limit}</span></div>
+        <div class="plan-item" style="margin-top:6px;color:${p.use_pinot?'var(--vec)':'#3a3a3a'}">${p.use_pinot?'✅ Will execute':'❌ Skipped for this intent'}</div>
+      </div>
+      <div class="plan-box">
+        <div class="plan-title vec">🧠 Vector Search Plan</div>
+        <div class="plan-item"><span class="pk">query:   </span><span class="pv">"${p.vector_query.slice(0,40)}..."</span></div>
+        <div class="plan-item"><span class="pk">top_k:   </span><span class="pv">${p.top_k}</span></div>
+        <div class="plan-item"><span class="pk">filter:  </span><span class="pv">${q.entities.user_id !== 'None' ? 'user_id='+q.entities.user_id : 'none'}</span></div>
+        <div class="plan-item" style="margin-top:6px;color:${p.use_vector?'var(--vec)':'#3a3a3a'}">${p.use_vector?'✅ Will execute':'❌ Skipped for this intent'}</div>
+      </div>
+    `;
+  }, 600);
+
+  // Routing table
+  setTimeout(() => {
+    document.getElementById('routing-section').style.display = 'block';
+    const tbody = ROUTING_ROWS.map(([intent, pinot, vec, topk, fresh, tokens]) => `
+      <tr>
+        <td>${intent}</td>
+        <td>${pinot?'<span class="badge-yes">✅ YES</span>':'<span class="badge-no">❌ NO</span>'}</td>
+        <td>${vec?'<span class="badge-yes">✅ YES</span>':'<span class="badge-no">❌ NO</span>'}</td>
+        <td><span class="badge-num">${topk}</span></td>
+        <td style="color:var(--dim);font-family:monospace;font-size:.65rem">${fresh}</td>
+        <td style="color:var(--dim);font-family:monospace;font-size:.65rem">${tokens}</td>
+      </tr>
+    `).join('');
+    document.getElementById('routing-table').innerHTML = `
+      <thead><tr><th>Intent</th><th>Pinot</th><th>Vector</th><th>top_k</th><th>Freshness SLA</th><th>Token Budget</th></tr></thead>
+      <tbody>${tbody}</tbody>
+    `;
+  }, 700);
+}
+
+// Init
+renderQuery(QUERIES[0]);
+</script>
+</body>
+</html>
