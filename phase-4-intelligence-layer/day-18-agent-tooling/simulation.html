@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 18 — Agent Tooling</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --pinot:#4d9fff;--vec:#a855f7;--log:#f59e0b;
+  --mon:#00e5ff;--alert:#ef4444;--dag:#22c55e;
+  --llm:#f472b6;--good:#22c55e;--bad:#ef4444;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(77,159,255,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--llm)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-tools.on{color:var(--llm);border-color:var(--llm);box-shadow:0 0 14px rgba(244,114,182,.25)}
+.tab.t-flow.on{color:var(--good);border-color:var(--good);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-fail.on{color:var(--bad);border-color:var(--bad);box-shadow:0 0 14px rgba(239,68,68,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--llm),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(244,114,182,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* TOOL CARDS */
+.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:800px){.tool-grid{grid-template-columns:1fr 1fr}}
+@media(max-width:500px){.tool-grid{grid-template-columns:1fr}}
+.tool-card{border-radius:10px;border:1px solid var(--border);background:#040810;padding:14px;cursor:pointer;transition:all .25s;opacity:.4;transform:translateY(4px)}
+.tool-card.in{opacity:1;transform:translateY(0)}
+.tool-card:hover{border-color:var(--tc,#f472b6);box-shadow:0 0 16px rgba(var(--tr,244,114,182),.15)}
+.tool-card.selected{border-color:var(--tc,#f472b6);box-shadow:0 0 20px rgba(var(--tr,244,114,182),.2);opacity:1}
+.tc-icon{font-size:1.4rem;margin-bottom:6px;display:block;filter:drop-shadow(0 0 5px var(--tc,#f472b6))}
+.tc-type{font-size:.58rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--tc,#f472b6);margin-bottom:3px}
+.tc-name{font-size:.8rem;font-weight:600;color:#c8d0e8;margin-bottom:3px}
+.tc-desc{font-size:.62rem;color:#3a5a7a;line-height:1.4;margin-bottom:6px}
+.tc-meta{display:flex;gap:8px;flex-wrap:wrap}
+.tc-badge{font-size:.58rem;padding:1px 6px;border-radius:4px;font-weight:700}
+.tc-badge.read{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--good)}
+.tc-badge.write{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--bad)}
+.tc-badge.ms{background:rgba(77,159,255,.1);border:1px solid rgba(77,159,255,.2);color:var(--pinot)}
+
+/* TOOL DETAIL */
+.tool-detail{margin-top:14px;padding:14px;border-radius:10px;border:1px solid var(--border);background:#040810;display:none}
+.tool-detail.show{display:block}
+.td-title{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.td-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #080e18;font-size:.68rem}
+.td-row:last-child{border-bottom:none}
+.td-k{color:#3a5a7a}.td-v{color:#c8d0e8;font-family:monospace}
+
+/* FLOW STEPS */
+.flow-steps{display:flex;flex-direction:column;gap:8px}
+.fstep{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.fstep.in{opacity:1;transform:translateX(0)}
+.fs-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.fs-num{font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px;background:rgba(244,114,182,.1);border:1px solid rgba(244,114,182,.2);color:var(--llm)}
+.fs-tool{font-size:.72rem;font-weight:600;color:#c8d0e8}
+.fs-reason{font-size:.65rem;color:#3a5a7a;font-style:italic}
+.fs-result{font-size:.65rem;font-family:monospace;margin-top:3px}
+.fs-result.ok{color:var(--good)}.fs-result.err{color:var(--bad)}.fs-result.warn{color:var(--log)}
+
+/* FAIL DEMO */
+.fail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.fail-grid{grid-template-columns:1fr}}
+.fbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.fbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.fbox-header.fail{background:rgba(239,68,68,.07);color:var(--bad);border-bottom:1px solid rgba(239,68,68,.12)}
+.fbox-header.fix{background:rgba(34,197,94,.07);color:var(--good);border-bottom:1px solid rgba(34,197,94,.12)}
+.fbox-body{padding:12px 14px;font-size:.7rem;line-height:1.8}
+.fbox-body.fail-t{color:#7a3a3a}.fbox-body.fix-t{color:#3a7a5a}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 4 · Day 18</div>
+    <h1>Agent <span>Tooling</span></h1>
+    <p class="sub">Validated, observable, reliable tool execution for agents</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-tools" onclick="show('tools')">🔧 Tool Registry</button>
+    <button class="tab t-flow"  onclick="show('flow')">▶ Workflow Execution</button>
+    <button class="tab t-fail"  onclick="show('fail')">⚠️ Failure Handling</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-tools"></div>
+    <div class="view" id="view-flow"></div>
+    <div class="view" id="view-fail"></div>
+  </div>
+</div>
+
+<script>
+// ── TOOL DEFINITIONS ──────────────────────────────────────────────────────
+const TOOLS = [
+  {icon:'🔷', type:'query_pinot',       name:'Apache Pinot',      tc:'#4d9fff',tr:'77,159,255',
+   desc:'Real-time SQL analytics. Error counts, rates, aggregations.',
+   timeout:'2000ms', retries:2, toolType:'read', roles:'support, engineer, analyst',
+   tags:['analytics','structured'],
+   detail:{latency:'~68ms P99', 'failure modes':'timeout, broker down', 'fallback':'return empty rows'}},
+  {icon:'🧠', type:'search_vectors',    name:'Vector DB',         tc:'#a855f7',tr:'168,85,247',
+   desc:'Semantic search over events and support tickets.',
+   timeout:'1000ms', retries:2, toolType:'read', roles:'support, engineer, analyst',
+   tags:['semantic','retrieval'],
+   detail:{latency:'~50ms P99', 'failure modes':'embedding model down, stale index', 'fallback':'return empty results'}},
+  {icon:'📋', type:'query_logs',        name:'Log Search',        tc:'#f59e0b',tr:'245,158,11',
+   desc:'Search Elasticsearch for error patterns and root causes.',
+   timeout:'3000ms', retries:1, toolType:'read', roles:'engineer, admin',
+   tags:['logs','debugging'],
+   detail:{latency:'~100ms P99', 'failure modes':'cluster unavailable, index not found', 'fallback':'return empty log lines'}},
+  {icon:'📊', type:'query_monitoring',  name:'Monitoring',        tc:'#00e5ff',tr:'0,229,255',
+   desc:'Query Prometheus/Grafana for system metrics and spike detection.',
+   timeout:'2000ms', retries:2, toolType:'read', roles:'engineer, analyst, admin',
+   tags:['metrics','observability'],
+   detail:{latency:'~50ms P99', 'failure modes':'scrape lag, metric not found', 'fallback':'return last known value'}},
+  {icon:'🔔', type:'send_alert',        name:'Send Alert',        tc:'#ef4444',tr:'239,68,68',
+   desc:'Send PagerDuty/Slack alert. Write tool — dry_run by default.',
+   timeout:'5000ms', retries:3, toolType:'write', roles:'engineer, admin',
+   tags:['alerting','write'],
+   detail:{latency:'~150ms', 'failure modes':'API rate limit, auth failure', 'dry_run':'true by default'}},
+  {icon:'⚙️', type:'trigger_airflow_dag',name:'Airflow DAG',      tc:'#22c55e',tr:'34,197,94',
+   desc:'Trigger Airflow DAG for failover or batch processing. Write tool.',
+   timeout:'5000ms', retries:1, toolType:'write', roles:'engineer, admin',
+   tags:['workflow','write'],
+   detail:{latency:'~200ms', 'failure modes':'DAG not found, scheduler down', 'dry_run':'true by default'}},
+];
+
+let selectedTool = null;
+
+function buildTools() {
+  const c = document.getElementById('view-tools');
+  c.innerHTML = `<div class="tool-grid" id="tool-grid"></div><div class="tool-detail" id="tool-detail"></div>`;
+  const grid = document.getElementById('tool-grid');
+  TOOLS.forEach((t, i) => {
+    const card = document.createElement('div');
+    card.className = 'tool-card';
+    card.style.setProperty('--tc', t.tc);
+    card.style.setProperty('--tr', t.tr);
+    card.innerHTML = `
+      <span class="tc-icon">${t.icon}</span>
+      <div class="tc-type">${t.type}</div>
+      <div class="tc-name">${t.name}</div>
+      <div class="tc-desc">${t.desc}</div>
+      <div class="tc-meta">
+        <span class="tc-badge ${t.toolType}">${t.toolType.toUpperCase()}</span>
+        <span class="tc-badge ms">${t.timeout}</span>
+        <span class="tc-badge ms">retry×${t.retries}</span>
+      </div>
+    `;
+    card.onclick = () => selectTool(t, card);
+    grid.appendChild(card);
+    setTimeout(() => card.classList.add('in'), i * 100);
+  });
+}
+
+function selectTool(t, card) {
+  document.querySelectorAll('.tool-card').forEach(c => c.classList.remove('selected'));
+  card.classList.add('selected');
+  const detail = document.getElementById('tool-detail');
+  detail.classList.add('show');
+  detail.innerHTML = `
+    <div class="td-title" style="color:${t.tc}">${t.icon} ${t.name} — Tool Details</div>
+    ${Object.entries({...t.detail, timeout: t.timeout, retries: t.retries, roles: t.roles, tags: t.tags.join(', ')}).map(([k,v]) =>
+      `<div class="td-row"><span class="td-k">${k}</span><span class="td-v">${v}</span></div>`
+    ).join('')}
+  `;
+}
+
+// ── FLOW VIEW ──────────────────────────────────────────────────────────────
+const FLOW_STEPS = [
+  {tool:'query_pinot',       reason:'Get current error count from Pinot',                result:'✅ {count: 847, latency: 68ms}',                    cls:'ok'},
+  {tool:'query_monitoring',  reason:'Check spike magnitude vs baseline',                 result:'✅ {spike_ratio: 400x, status: CRITICAL}',           cls:'err'},
+  {tool:'query_logs',        reason:'Find root cause in application logs',               result:'✅ {count: 847, first: "14:32:01", pattern: "gateway timeout"}', cls:'ok'},
+  {tool:'search_vectors',    reason:'Find similar historical incidents',                 result:'✅ {results: ["Gateway outage 2025-11: resolved by failover"]}', cls:'ok'},
+  {tool:'send_alert',        reason:'Alert on-call team (dry_run=true)',                 result:'✅ {sent: false, dry_run: true, would_send: "support-alerts"}', cls:'warn'},
+  {tool:'trigger_airflow_dag',reason:'Trigger failover DAG (dry_run=true)',              result:'✅ {status: "would_trigger", dag: "payment_gateway_failover"}', cls:'warn'},
+];
+
+function buildFlow() {
+  const c = document.getElementById('view-flow');
+  c.innerHTML = `
+    <div style="font-size:.68rem;color:var(--dim);margin-bottom:14px">
+      Task: "Checkout error rate spiked 10 minutes ago. What's happening?"
+    </div>
+    <div class="flow-steps" id="flow-steps"></div>
+    <div style="margin-top:14px;padding:12px;border-radius:8px;border:1px solid rgba(244,114,182,.2);background:rgba(244,114,182,.04);font-size:.72rem;color:#7a5a7a;line-height:1.6;display:none" id="flow-answer"></div>
+  `;
+  const steps = document.getElementById('flow-steps');
+  FLOW_STEPS.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'fstep';
+    el.innerHTML = `
+      <div class="fs-header">
+        <span class="fs-num">Step ${i+1}</span>
+        <span class="fs-tool">${s.tool}()</span>
+      </div>
+      <div class="fs-reason">Reasoning: ${s.reason}</div>
+      <div class="fs-result ${s.cls}">${s.result}</div>
+    `;
+    steps.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 250);
+  });
+  setTimeout(() => {
+    const ans = document.getElementById('flow-answer');
+    ans.style.display = 'block';
+    ans.innerHTML = `<b style="color:var(--llm)">Final Answer:</b> Payment gateway outage confirmed. 847 errors (400x baseline spike). Root cause: upstream provider timeout. Historical pattern: failover resolves in ~2 minutes. Alert sent (dry_run). Failover DAG triggered (dry_run). Confidence: 96%.`;
+  }, FLOW_STEPS.length * 250 + 300);
+}
+
+// ── FAIL VIEW ──────────────────────────────────────────────────────────────
+function buildFail() {
+  const c = document.getElementById('view-fail');
+  c.innerHTML = `
+    <div class="fail-grid">
+      <div class="fbox">
+        <div class="fbox-header fail">❌ Without Reliability Patterns</div>
+        <div class="fbox-body fail-t">
+          <b>No timeout:</b><br>
+          Agent calls slow external API → hangs for 30s → entire agent blocked<br><br>
+          <b>No validation:</b><br>
+          LLM hallucinates tool name "query_elasticsearch" → agent crashes<br><br>
+          <b>No retry:</b><br>
+          Pinot broker restarts → single failure → agent gives up with no data<br><br>
+          <b>No dry_run:</b><br>
+          Agent sends 23 duplicate PagerDuty alerts → on-call team flooded<br><br>
+          <b>No observability:</b><br>
+          Tool call fails silently → LLM reasons over empty context → wrong answer
+        </div>
+      </div>
+      <div class="fbox">
+        <div class="fbox-header fix">✅ With Reliability Patterns</div>
+        <div class="fbox-body fix-t">
+          <b>Timeout (2s for Pinot):</b><br>
+          Slow call → timeout → retry with backoff → fallback if all fail<br><br>
+          <b>Validation layer:</b><br>
+          "query_elasticsearch" → "Unknown tool" error → agent tries correct tool<br><br>
+          <b>Retry (max 2):</b><br>
+          Pinot restart → retry after 100ms → succeeds on attempt 2<br><br>
+          <b>dry_run=True default:</b><br>
+          Alert validated and logged → human confirms → then actually sent<br><br>
+          <b>Observability:</b><br>
+          Every call logged → latency tracked → failure rate alerted → debuggable
+        </div>
+      </div>
+    </div>
+    <div style="margin-top:14px;padding:12px;border-radius:8px;border:1px solid rgba(245,158,11,.2);background:rgba(245,158,11,.04);font-size:.73rem;color:#7a6a3a;line-height:1.6">
+      <b style="color:var(--log)">Rule:</b> Every tool call needs: timeout + retry + validation + observability. Write tools need dry_run mode. Agents without these patterns are production incidents waiting to happen.
+    </div>
+  `;
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='tools') buildTools();
+  else if(type==='flow') buildFlow();
+  else buildFail();
+}
+
+show('tools');
+</script>
+</body>
+</html>
