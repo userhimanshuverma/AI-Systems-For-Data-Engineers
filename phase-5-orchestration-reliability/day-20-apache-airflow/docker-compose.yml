@@ -1,0 +1,137 @@
+---
+# Apache Airflow — Minimal setup for Day 20
+# Uses LocalExecutor (single-node, no Celery/Redis needed)
+#
+# Usage:
+#   docker compose up -d
+#   docker compose ps          (check all services healthy)
+#   docker compose down
+#   docker compose down -v     (remove volumes + metadata DB)
+#
+# Airflow UI:  http://localhost:8080
+# Default credentials: admin / admin
+#
+# To place DAG files: copy .py files to ./dags/
+# Airflow will auto-detect them within 30 seconds.
+
+version: "3.8"
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.1
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ""
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: "true"
+    _PIP_ADDITIONAL_REQUIREMENTS: ""
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    postgres:
+      condition: service_healthy
+
+services:
+
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
+    environment:
+      <<: *airflow-common
+      _AIRFLOW_DB_MIGRATE: "true"
+      _AIRFLOW_WWW_USER_CREATE: "true"
+      _AIRFLOW_WWW_USER_USERNAME: admin
+      _AIRFLOW_WWW_USER_PASSWORD: admin
+
+volumes:
+  postgres-db-volume:
+
+# ── USAGE AFTER STARTUP ───────────────────────────────────────────────────────
+#
+# 1. Start all services:
+#    docker compose up -d
+#
+# 2. Wait for init to complete (~60 seconds):
+#    docker compose logs airflow-init
+#
+# 3. Open Airflow UI:
+#    http://localhost:8080  (admin / admin)
+#
+# 4. Copy DAG files to ./dags/:
+#    cp code/airflow_dag_example.py dags/
+#
+# 5. Trigger a DAG run from UI or CLI:
+#    docker exec -it <scheduler_container> airflow dags trigger embedding_refresh_pipeline
+#
+# 6. View logs:
+#    docker exec -it <scheduler_container> airflow tasks logs embedding_refresh_pipeline detect_changed_documents <run_id>
+#
+# 7. Stop:
+#    docker compose down
+#
+# ── LOCAL SETUP (Alternative) ─────────────────────────────────────────────────
+#
+# pip install "apache-airflow==2.9.1" --constraint \
+#   "https://raw.githubusercontent.com/apache/airflow/constraints-2.9.1/constraints-3.11.txt"
+#
+# export AIRFLOW_HOME=~/airflow
+# airflow db migrate
+# airflow users create --username admin --password admin --role Admin \
+#   --firstname Admin --lastname User --email admin@example.com
+# airflow webserver --port 8080 &
+# airflow scheduler &
+#
+# Copy DAG to $AIRFLOW_HOME/dags/
+# Open http://localhost:8080

@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 20 — Airflow for AI Systems</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --success:#22c55e;--failed:#ef4444;--running:#f59e0b;
+  --retry:#a855f7;--skip:#64748b;--sla:#00e5ff;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(34,197,94,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--success)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-dag.on{color:var(--success);border-color:var(--success);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-retry.on{color:var(--retry);border-color:var(--retry);box-shadow:0 0 14px rgba(168,85,247,.25)}
+.tab.t-monitor.on{color:var(--sla);border-color:var(--sla);box-shadow:0 0 14px rgba(0,229,255,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--success),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(34,197,94,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* DAG VISUALIZATION */
+.dag-controls{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.dag-btn{padding:7px 16px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.dag-btn:hover{color:#7a9aba;border-color:#2a3a5a}
+.dag-btn.success-btn{border-color:var(--success);color:var(--success)}
+.dag-btn.fail-btn{border-color:var(--failed);color:var(--failed)}
+
+.dag-flow{display:flex;flex-direction:column;align-items:center;gap:0}
+.dag-task{width:380px;padding:12px 16px;border-radius:8px;border:1px solid var(--border);background:#040810;text-align:center;position:relative;opacity:.35;transform:translateY(4px);transition:all .3s}
+.dag-task.in{opacity:1;transform:translateY(0)}
+.dag-task.running{border-color:var(--running);box-shadow:0 0 16px rgba(245,158,11,.2);animation:pulse-task .8s ease-in-out infinite}
+.dag-task.success{border-color:var(--success);box-shadow:0 0 16px rgba(34,197,94,.2)}
+.dag-task.failed{border-color:var(--failed);box-shadow:0 0 16px rgba(239,68,68,.2)}
+.dag-task.retrying{border-color:var(--retry);box-shadow:0 0 16px rgba(168,85,247,.2)}
+.dag-task.skipped{opacity:.3;border-color:var(--skip)}
+@keyframes pulse-task{0%,100%{box-shadow:0 0 8px rgba(245,158,11,.2)}50%{box-shadow:0 0 20px rgba(245,158,11,.4)}}
+.dt-id{font-size:.62rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:3px}
+.dt-name{font-size:.8rem;font-weight:600;color:#c8d0e8;margin-bottom:2px}
+.dt-status{font-size:.65rem;font-family:monospace}
+.dt-status.running{color:var(--running)}.dt-status.success{color:var(--success)}
+.dt-status.failed{color:var(--failed)}.dt-status.retrying{color:var(--retry)}
+.dag-arrow{width:2px;height:20px;background:linear-gradient(to bottom,#1e3a5f,#2a4a7a);position:relative}
+.dag-arrow::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);border-left:4px solid transparent;border-right:4px solid transparent;border-top:6px solid #2a4a7a}
+.dag-arrow.success{background:var(--success)}.dag-arrow.success::after{border-top-color:var(--success)}
+.dag-arrow.failed{background:var(--failed)}.dag-arrow.failed::after{border-top-color:var(--failed)}
+
+/* RETRY TIMELINE */
+.retry-timeline{display:flex;flex-direction:column;gap:8px}
+.rt-item{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.rt-item.in{opacity:1;transform:translateX(0)}
+.rt-header{display:flex;align-items:center;gap:8px;margin-bottom:3px}
+.rt-attempt{font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px}
+.rt-attempt.fail{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--failed)}
+.rt-attempt.success{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--success)}
+.rt-name{font-size:.72rem;font-weight:600;color:#c8d0e8}
+.rt-detail{font-size:.65rem;color:#3a5a7a;font-family:monospace}
+.rt-wait{font-size:.62rem;color:var(--retry);margin-top:2px}
+
+/* MONITOR GRID */
+.monitor-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:600px){.monitor-grid{grid-template-columns:1fr}}
+.mcard{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center}
+.mcard-val{font-size:1.2rem;font-weight:700;font-family:monospace;line-height:1}
+.mcard-lbl{font-size:.6rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+.run-history{display:flex;flex-direction:column;gap:4px}
+.rh-item{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:#040810;font-size:.68rem}
+.rh-icon{font-size:.8rem}
+.rh-id{font-family:monospace;color:#3a5a7a;min-width:160px}
+.rh-dur{font-family:monospace;min-width:60px;text-align:right}
+.rh-tasks{color:#2a3a5a;font-size:.62rem}
+.alert-list{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.alert-item{padding:7px 12px;border-radius:6px;font-size:.68rem}
+.alert-item.sla{background:rgba(0,229,255,.06);border:1px solid rgba(0,229,255,.15);color:var(--sla)}
+.alert-item.fail{background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);color:var(--failed)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 5 · Day 20</div>
+    <h1>Apache <span>Airflow</span> for AI Systems</h1>
+    <p class="sub">Scheduling · Retries · Dependencies · Observability</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-dag"     onclick="show('dag')">⚡ DAG Execution</button>
+    <button class="tab t-retry"   onclick="show('retry')">🔄 Retry Flow</button>
+    <button class="tab t-monitor" onclick="show('monitor')">📊 Monitoring</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-dag"></div>
+    <div class="view" id="view-retry"></div>
+    <div class="view" id="view-monitor"></div>
+  </div>
+</div>
+
+<script>
+// ── DAG TASKS ──────────────────────────────────────────────────────────────
+const TASKS = [
+  {id:'T1', name:'detect_changed_documents', detail:'Query Pinot for new/updated events'},
+  {id:'T2', name:'generate_embeddings',      detail:'Call embedding API (retries=3)'},
+  {id:'T3', name:'upsert_to_vector_store',   detail:'Write to Qdrant (idempotent)'},
+  {id:'T4', name:'validate_retrieval_quality',detail:'Run test queries, check precision@4'},
+];
+
+let dagRunning = false;
+
+function buildDAG() {
+  const c = document.getElementById('view-dag');
+  c.innerHTML = `
+    <div class="dag-controls">
+      <button class="dag-btn success-btn" onclick="runDAG('success')">▶ Run (Success)</button>
+      <button class="dag-btn fail-btn"    onclick="runDAG('fail')">▶ Run (Task 2 Fails)</button>
+      <button class="dag-btn"            onclick="runDAG('retry')">▶ Run (Retry + Recover)</button>
+      <button class="dag-btn"            onclick="resetDAG()">↺ Reset</button>
+    </div>
+    <div style="font-size:.65rem;color:var(--dim);margin-bottom:12px">
+      DAG: embedding_refresh_pipeline | Schedule: every 30 minutes | Retries: 3
+    </div>
+    <div class="dag-flow" id="dag-flow"></div>
+    <div id="dag-log" style="margin-top:14px;padding:12px;border-radius:8px;border:1px solid var(--border);background:#040810;font-family:monospace;font-size:.68rem;min-height:40px;color:#3a5a7a;display:none"></div>
+  `;
+  buildDAGNodes();
+}
+
+function buildDAGNodes() {
+  const flow = document.getElementById('dag-flow');
+  flow.innerHTML = '';
+  TASKS.forEach((t, i) => {
+    if (i > 0) {
+      const arr = document.createElement('div');
+      arr.className = 'dag-arrow';
+      arr.id = `arr-${i}`;
+      flow.appendChild(arr);
+    }
+    const el = document.createElement('div');
+    el.className = 'dag-task';
+    el.id = `task-${t.id}`;
+    el.innerHTML = `<div class="dt-id">${t.id}</div><div class="dt-name">${t.name}</div><div class="dt-status" id="status-${t.id}">waiting</div>`;
+    flow.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 100);
+  });
+}
+
+function setTaskState(id, state, detail='') {
+  const el = document.getElementById(`task-${id}`);
+  const st = document.getElementById(`status-${id}`);
+  if (!el || !st) return;
+  el.className = `dag-task in ${state}`;
+  st.className = `dt-status ${state}`;
+  const icons = {running:'⏳ running...', success:'✅ success', failed:'❌ failed', retrying:'🔄 retrying...', skipped:'⏭ skipped'};
+  st.textContent = (icons[state] || state) + (detail ? ` — ${detail}` : '');
+}
+
+function setArrow(i, state) {
+  const el = document.getElementById(`arr-${i}`);
+  if (el) el.className = `dag-arrow ${state}`;
+}
+
+function logMsg(msg, color='#3a5a7a') {
+  const log = document.getElementById('dag-log');
+  if (!log) return;
+  log.style.display = 'block';
+  log.innerHTML += `<div style="color:${color};padding:1px 0">[${new Date().toLocaleTimeString()}] ${msg}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function runDAG(mode) {
+  if (dagRunning) return;
+  dagRunning = true;
+  buildDAGNodes();
+  const log = document.getElementById('dag-log');
+  if (log) { log.style.display='block'; log.innerHTML=''; }
+
+  const delays = [0, 800, 1800, 2600, 3400];
+
+  if (mode === 'success') {
+    TASKS.forEach((t, i) => {
+      setTimeout(() => { setTaskState(t.id, 'running'); logMsg(`${t.name} started`, '#f59e0b'); }, delays[i]);
+      setTimeout(() => { setTaskState(t.id, 'success'); if(i>0) setArrow(i,'success'); logMsg(`${t.name} completed ✅`, '#22c55e'); }, delays[i]+700);
+    });
+    setTimeout(() => { logMsg('DAG run completed successfully ✅', '#22c55e'); dagRunning=false; }, delays[4]+200);
+
+  } else if (mode === 'fail') {
+    setTimeout(() => { setTaskState('T1','running'); logMsg('detect_changed_documents started','#f59e0b'); }, 0);
+    setTimeout(() => { setTaskState('T1','success'); setArrow(1,'success'); logMsg('detect_changed_documents ✅','#22c55e'); }, 700);
+    setTimeout(() => { setTaskState('T2','running'); logMsg('generate_embeddings started','#f59e0b'); }, 800);
+    setTimeout(() => { setTaskState('T2','failed','TimeoutError'); setArrow(2,'failed'); logMsg('generate_embeddings ❌ FAILED: TimeoutError','#ef4444'); }, 1500);
+    setTimeout(() => { setTaskState('T3','skipped'); setTaskState('T4','skipped'); logMsg('upsert_to_vector_store SKIPPED (upstream failed)','#64748b'); logMsg('validate_retrieval_quality SKIPPED (upstream failed)','#64748b'); }, 1700);
+    setTimeout(() => { logMsg('DAG run FAILED. on_failure_callback fired → PagerDuty alert','#ef4444'); dagRunning=false; }, 2000);
+
+  } else { // retry
+    setTimeout(() => { setTaskState('T1','running'); logMsg('detect_changed_documents started','#f59e0b'); }, 0);
+    setTimeout(() => { setTaskState('T1','success'); setArrow(1,'success'); logMsg('detect_changed_documents ✅','#22c55e'); }, 700);
+    setTimeout(() => { setTaskState('T2','running'); logMsg('generate_embeddings started','#f59e0b'); }, 800);
+    setTimeout(() => { setTaskState('T2','retrying','attempt 1/3 failed'); logMsg('generate_embeddings attempt 1 ❌ TimeoutError — retry in 2min','#a855f7'); }, 1400);
+    setTimeout(() => { setTaskState('T2','retrying','attempt 2/3 failed'); logMsg('generate_embeddings attempt 2 ❌ TimeoutError — retry in 4min','#a855f7'); }, 2200);
+    setTimeout(() => { setTaskState('T2','success'); setArrow(2,'success'); logMsg('generate_embeddings attempt 3 ✅ succeeded','#22c55e'); }, 3000);
+    setTimeout(() => { setTaskState('T3','running'); logMsg('upsert_to_vector_store started','#f59e0b'); }, 3100);
+    setTimeout(() => { setTaskState('T3','success'); setArrow(3,'success'); logMsg('upsert_to_vector_store ✅','#22c55e'); }, 3800);
+    setTimeout(() => { setTaskState('T4','running'); logMsg('validate_retrieval_quality started','#f59e0b'); }, 3900);
+    setTimeout(() => { setTaskState('T4','success'); setArrow(4,'success'); logMsg('validate_retrieval_quality ✅ precision@4=0.91','#22c55e'); }, 4600);
+    setTimeout(() => { logMsg('DAG run completed (with 2 retries) ✅ — within SLA','#22c55e'); dagRunning=false; }, 4800);
+  }
+}
+
+function resetDAG() { dagRunning=false; buildDAGNodes(); const l=document.getElementById('dag-log'); if(l){l.innerHTML='';l.style.display='none';} }
+
+// ── RETRY VIEW ─────────────────────────────────────────────────────────────
+const RETRY_STEPS = [
+  {attempt:1, state:'fail',    time:'14:30:00', detail:'TimeoutError: API timeout after 30s', wait:'Retry in 2 minutes (backoff: 2^0 × 2s)'},
+  {attempt:2, state:'fail',    time:'14:32:00', detail:'TimeoutError: API timeout after 30s', wait:'Retry in 4 minutes (backoff: 2^1 × 2s)'},
+  {attempt:3, state:'success', time:'14:36:00', detail:'847 embeddings generated in 12.3s',   wait:null},
+];
+
+function buildRetry() {
+  const c = document.getElementById('view-retry');
+  c.innerHTML = `
+    <div style="font-size:.68rem;color:var(--dim);margin-bottom:14px">
+      Task: generate_embeddings | retries=3 | retry_exponential_backoff=True | base_delay=2min
+    </div>
+    <div class="retry-timeline" id="retry-tl"></div>
+    <div style="margin-top:14px;padding:12px;border-radius:8px;border:1px solid rgba(34,197,94,.2);background:rgba(34,197,94,.04);font-size:.72rem;color:#3a7a5a;line-height:1.6" id="retry-summary" style="display:none"></div>
+  `;
+  const tl = document.getElementById('retry-tl');
+  RETRY_STEPS.forEach((s, i) => {
+    const el = document.createElement('div');
+    el.className = 'rt-item';
+    el.innerHTML = `
+      <div class="rt-header">
+        <span class="rt-attempt ${s.state}">Attempt ${s.attempt}/${RETRY_STEPS.length}</span>
+        <span class="rt-name">generate_embeddings</span>
+        <span style="margin-left:auto;font-size:.62rem;color:var(--dim);font-family:monospace">${s.time}</span>
+      </div>
+      <div class="rt-detail">${s.state==='fail'?'❌':'✅'} ${s.detail}</div>
+      ${s.wait ? `<div class="rt-wait">⏳ ${s.wait}</div>` : ''}
+    `;
+    tl.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 300);
+  });
+  setTimeout(() => {
+    const sum = document.getElementById('retry-summary');
+    sum.style.display = 'block';
+    sum.innerHTML = `<b style="color:var(--success)">Result:</b> Task succeeded on attempt 3. Total delay: 6 minutes. SLA: 30 minutes. <b>No alert fired.</b><br>Downstream tasks (upsert, validate) started after attempt 3 succeeded.`;
+  }, RETRY_STEPS.length * 300 + 200);
+}
+
+// ── MONITOR VIEW ───────────────────────────────────────────────────────────
+const RUNS = [
+  {id:'scheduled__20260427T1400', state:'success', dur:'8.2min', tasks:4, retries:0},
+  {id:'scheduled__20260427T1430', state:'success', dur:'12.1min',tasks:4, retries:1},
+  {id:'scheduled__20260427T1500', state:'failed',  dur:'32.0min',tasks:2, retries:3},
+  {id:'scheduled__20260427T1530', state:'success', dur:'9.4min', tasks:4, retries:0},
+  {id:'scheduled__20260427T1600', state:'success', dur:'7.8min', tasks:4, retries:0},
+];
+const ALERTS = [
+  {type:'SLA_MISS', msg:'embedding_refresh.generate_embeddings: 32min (SLA=15min)'},
+  {type:'FAILURE',  msg:'embedding_refresh run failed after 3 retries at 15:00'},
+];
+
+function buildMonitor() {
+  const c = document.getElementById('view-monitor');
+  const success = RUNS.filter(r=>r.state==='success').length;
+  const retries = RUNS.reduce((s,r)=>s+r.retries,0);
+  c.innerHTML = `
+    <div class="monitor-grid">
+      <div class="mcard"><div class="mcard-val" style="color:var(--success)">${success}/${RUNS.length}</div><div class="mcard-lbl">Success Rate</div></div>
+      <div class="mcard"><div class="mcard-val" style="color:var(--running)">${retries}</div><div class="mcard-lbl">Total Retries</div></div>
+      <div class="mcard"><div class="mcard-val" style="color:var(--sla)">${ALERTS.length}</div><div class="mcard-lbl">Alerts Fired</div></div>
+    </div>
+    <div style="font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">DAG Run History</div>
+    <div class="run-history">
+      ${RUNS.map(r=>`
+        <div class="rh-item">
+          <span class="rh-icon">${r.state==='success'?'✅':'❌'}</span>
+          <span class="rh-id">${r.id}</span>
+          <span style="color:${r.state==='success'?'var(--success)':'var(--failed)'};">${r.state}</span>
+          <span class="rh-dur" style="color:var(--dim)">${r.dur}</span>
+          <span class="rh-tasks">${r.tasks} tasks${r.retries>0?` | ${r.retries} retries`:''}</span>
+        </div>
+      `).join('')}
+    </div>
+    <div class="alert-list">
+      ${ALERTS.map(a=>`<div class="alert-item ${a.type==='SLA_MISS'?'sla':'fail'}">🔔 [${a.type}] ${a.msg}</div>`).join('')}
+    </div>
+  `;
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='dag') buildDAG();
+  else if(type==='retry') buildRetry();
+  else buildMonitor();
+}
+
+show('dag');
+</script>
+</body>
+</html>
