@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 21 — Async vs Sync Architectures</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --sync:#4d9fff;--async:#22c55e;--queue:#f59e0b;
+  --worker:#a855f7;--dlq:#ef4444;--alert:#f59e0b;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(34,197,94,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(77,159,255,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 .s{color:var(--sync)} h1 .a{color:var(--async)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-compare.on{color:var(--queue);border-color:var(--queue);box-shadow:0 0 14px rgba(245,158,11,.25)}
+.tab.t-queue.on{color:var(--async);border-color:var(--async);box-shadow:0 0 14px rgba(34,197,94,.25)}
+.tab.t-bp.on{color:var(--dlq);border-color:var(--dlq);box-shadow:0 0 14px rgba(239,68,68,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--queue),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(245,158,11,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* COMPARE VIEW */
+.cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.cmp-grid{grid-template-columns:1fr}}
+.cbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.cbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.cbox-header.sync{background:rgba(77,159,255,.07);color:var(--sync);border-bottom:1px solid rgba(77,159,255,.12)}
+.cbox-header.async{background:rgba(34,197,94,.07);color:var(--async);border-bottom:1px solid rgba(34,197,94,.12)}
+.cbox-body{padding:12px 14px;font-size:.7rem;line-height:1.8}
+.cbox-body.sync-t{color:#3a5a7a}.cbox-body.async-t{color:#3a7a5a}
+.flow-step{padding:4px 0;border-bottom:1px solid #080e18;font-size:.68rem;font-family:monospace}
+.flow-step:last-child{border-bottom:none}
+.fs-time{color:var(--queue);margin-right:8px}
+.cmp-table{width:100%;border-collapse:collapse;font-size:.72rem;margin-top:14px}
+.cmp-table th{padding:9px 12px;text-align:left;font-size:.62rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-bottom:1px solid var(--border);color:var(--dim)}
+.cmp-table td{padding:9px 12px;border-bottom:1px solid #080e18;vertical-align:top}
+.cmp-table tr:last-child td{border-bottom:none}
+.cmp-table td:first-child{color:var(--dim);font-weight:600;font-size:.62rem;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.sc{color:var(--sync)}.ac{color:var(--async)}
+
+/* QUEUE VIEW */
+.queue-vis{display:flex;flex-direction:column;gap:12px}
+.qv-controls{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.qv-btn{padding:7px 14px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.qv-btn:hover{color:#7a9aba;border-color:#2a3a5a}
+.qv-btn.add{border-color:var(--queue);color:var(--queue)}
+.qv-btn.spike{border-color:var(--dlq);color:var(--dlq)}
+.queue-display{display:flex;align-items:center;gap:12px;padding:14px;border-radius:10px;border:1px solid var(--border);background:#040810}
+.queue-label{font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);min-width:80px}
+.queue-bar-wrap{flex:1;height:24px;background:#0c1428;border-radius:4px;overflow:hidden;position:relative}
+.queue-bar{height:100%;border-radius:4px;transition:width .3s ease;background:var(--async)}
+.queue-bar.warn{background:var(--queue)}
+.queue-bar.crit{background:var(--dlq)}
+.queue-count{font-size:.72rem;font-family:monospace;min-width:60px;text-align:right;color:#c8d0e8}
+.workers-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.worker-chip{padding:4px 10px;border-radius:6px;font-size:.65rem;font-weight:700;border:1px solid rgba(168,85,247,.2);background:rgba(168,85,247,.08);color:var(--worker);transition:all .3s}
+.worker-chip.busy{background:rgba(168,85,247,.2);border-color:rgba(168,85,247,.4)}
+.alert-banner{padding:8px 12px;border-radius:6px;font-size:.7rem;font-weight:600;display:none;margin-top:8px}
+.alert-banner.warn{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:var(--queue)}
+.alert-banner.crit{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--dlq)}
+
+/* BACKPRESSURE CHART */
+.bp-chart{margin-top:14px}
+.bp-controls{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.bp-btn{padding:7px 14px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.bp-btn:hover{color:#7a9aba;border-color:#2a3a5a}
+.bp-btn.active{color:var(--async);border-color:var(--async)}
+canvas{border-radius:8px;border:1px solid var(--border);background:#040810;display:block;width:100%}
+.bp-legend{display:flex;gap:16px;margin-top:8px;flex-wrap:wrap}
+.bp-leg-item{display:flex;align-items:center;gap:6px;font-size:.65rem;color:var(--dim)}
+.bp-leg-dot{width:10px;height:10px;border-radius:50%}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 5 · Day 21</div>
+    <h1><span class="s">Sync</span> vs <span class="a">Async</span> Architectures</h1>
+    <p class="sub">Queues · Backpressure · Retries · Worker Pools</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-compare" onclick="show('compare')">⚡ Sync vs Async</button>
+    <button class="tab t-queue"   onclick="show('queue')">📦 Queue Simulation</button>
+    <button class="tab t-bp"      onclick="show('bp')">📊 Backpressure</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-compare"></div>
+    <div class="view" id="view-queue"></div>
+    <div class="view" id="view-bp"></div>
+  </div>
+</div>
+
+<script>
+// ── COMPARE VIEW ──────────────────────────────────────────────────────────
+const CMP_ROWS = [
+  ['Response time',   '~720ms (blocks)',        '~50ms (returns job_id)'],
+  ['Throughput',      'Limited by LLM (600ms)', 'Scales with workers'],
+  ['Scalability',     'Vertical only',          'Horizontal (add workers)'],
+  ['Spike handling',  'Timeouts / 503s',        'Queue absorbs spike'],
+  ['Failure isolation','One failure blocks all','Isolated per task'],
+  ['Debugging',       'Easy (linear stack)',    'Harder (distributed)'],
+  ['Result delivery', 'Immediate',              'Polling / webhook'],
+  ['Best for',        'Simple queries < 200ms', 'Heavy background work'],
+];
+
+function buildCompare() {
+  const c = document.getElementById('view-compare');
+  c.innerHTML = `
+    <div class="cmp-grid">
+      <div class="cbox">
+        <div class="cbox-header sync">🔵 Synchronous — POST /analyze</div>
+        <div class="cbox-body sync-t">
+          <div class="flow-step"><span class="fs-time">t=0ms</span>Client sends request</div>
+          <div class="flow-step"><span class="fs-time">t=70ms</span>Query Pinot (blocks)</div>
+          <div class="flow-step"><span class="fs-time">t=120ms</span>Search vectors (blocks)</div>
+          <div class="flow-step"><span class="fs-time">t=720ms</span>Call LLM (blocks 600ms)</div>
+          <div class="flow-step"><span class="fs-time">t=720ms</span>Return response</div>
+          <div style="margin-top:8px;font-size:.65rem;color:var(--dlq)">❌ Client blocked for 720ms. At 1000 req/sec: need 720 threads.</div>
+        </div>
+      </div>
+      <div class="cbox">
+        <div class="cbox-header async">🟢 Asynchronous — POST /analyze</div>
+        <div class="cbox-body async-t">
+          <div class="flow-step"><span class="fs-time">t=0ms</span>Client sends request</div>
+          <div class="flow-step"><span class="fs-time">t=50ms</span>Enqueue task → return job_id</div>
+          <div class="flow-step"><span class="fs-time">t=50ms</span>Client gets 202 Accepted ✅</div>
+          <div class="flow-step" style="color:#1e3a5f">— background workers —</div>
+          <div class="flow-step"><span class="fs-time">t=120ms</span>Worker: Query Pinot</div>
+          <div class="flow-step"><span class="fs-time">t=170ms</span>Worker: Search vectors</div>
+          <div class="flow-step"><span class="fs-time">t=770ms</span>Worker: Call LLM → store result</div>
+          <div style="margin-top:8px;font-size:.65rem;color:var(--async)">✅ Client unblocked in 50ms. Workers scale independently.</div>
+        </div>
+      </div>
+    </div>
+    <table class="cmp-table">
+      <thead><tr><th>Dimension</th><th style="color:var(--sync)">🔵 Synchronous</th><th style="color:var(--async)">🟢 Asynchronous</th></tr></thead>
+      <tbody>${CMP_ROWS.map(([d,s,a])=>`<tr><td>${d}</td><td class="sc">${s}</td><td class="ac">${a}</td></tr>`).join('')}</tbody>
+    </table>
+  `;
+}
+
+// ── QUEUE SIMULATION ──────────────────────────────────────────────────────
+let queueDepth = 0;
+let workers    = 4;
+let processing = 0;
+let queueInterval = null;
+
+function buildQueue() {
+  const c = document.getElementById('view-queue');
+  c.innerHTML = `
+    <div class="queue-vis">
+      <div class="qv-controls">
+        <button class="qv-btn add"   onclick="addTasks(10)">+ Add 10 Tasks</button>
+        <button class="qv-btn spike" onclick="addTasks(200)">⚡ Traffic Spike (+200)</button>
+        <button class="qv-btn"       onclick="addWorkers()">+ Add Workers</button>
+        <button class="qv-btn"       onclick="resetQueue()">↺ Reset</button>
+      </div>
+      <div class="queue-display">
+        <div class="queue-label">Queue</div>
+        <div class="queue-bar-wrap"><div class="queue-bar" id="q-bar" style="width:0%"></div></div>
+        <div class="queue-count" id="q-count">0 tasks</div>
+      </div>
+      <div class="queue-display">
+        <div class="queue-label">Workers</div>
+        <div class="workers-row" id="workers-row"></div>
+      </div>
+      <div class="alert-banner" id="q-alert"></div>
+      <div style="margin-top:10px;font-size:.68rem;color:var(--dim);font-family:monospace" id="q-log"></div>
+    </div>
+  `;
+  renderWorkers();
+  startQueueDrain();
+}
+
+function renderWorkers() {
+  const row = document.getElementById('workers-row');
+  if (!row) return;
+  row.innerHTML = '';
+  for (let i = 0; i < workers; i++) {
+    const chip = document.createElement('div');
+    chip.className = 'worker-chip' + (i < processing ? ' busy' : '');
+    chip.textContent = `W${i+1} ${i < processing ? '⚙️' : '💤'}`;
+    row.appendChild(chip);
+  }
+}
+
+function addTasks(n) {
+  queueDepth += n;
+  updateQueueDisplay();
+  qLog(`+${n} tasks enqueued. Queue: ${queueDepth}`);
+}
+
+function addWorkers() {
+  workers = Math.min(workers + 2, 16);
+  renderWorkers();
+  qLog(`Workers scaled to ${workers}`);
+}
+
+function resetQueue() {
+  queueDepth = 0; workers = 4; processing = 0;
+  updateQueueDisplay();
+  renderWorkers();
+  const alert = document.getElementById('q-alert');
+  if (alert) { alert.style.display='none'; }
+  const log = document.getElementById('q-log');
+  if (log) log.innerHTML = '';
+}
+
+function startQueueDrain() {
+  if (queueInterval) clearInterval(queueInterval);
+  queueInterval = setInterval(() => {
+    if (queueDepth <= 0) { processing = 0; renderWorkers(); return; }
+    const drain = Math.min(workers * 2, queueDepth);
+    queueDepth  = Math.max(0, queueDepth - drain);
+    processing  = Math.min(workers, Math.ceil(drain / 2));
+    updateQueueDisplay();
+    renderWorkers();
+  }, 500);
+}
+
+function updateQueueDisplay() {
+  const MAX = 500;
+  const pct = Math.min((queueDepth / MAX) * 100, 100);
+  const bar = document.getElementById('q-bar');
+  const cnt = document.getElementById('q-count');
+  const alrt= document.getElementById('q-alert');
+  if (!bar || !cnt) return;
+
+  bar.style.width = pct + '%';
+  cnt.textContent = queueDepth + ' tasks';
+
+  if (queueDepth >= 200) {
+    bar.className = 'queue-bar crit';
+    if (alrt) { alrt.className='alert-banner crit'; alrt.style.display='block'; alrt.textContent=`🔴 CRITICAL: Queue depth ${queueDepth} > 200. Scale workers or throttle producer.`; }
+  } else if (queueDepth >= 100) {
+    bar.className = 'queue-bar warn';
+    if (alrt) { alrt.className='alert-banner warn'; alrt.style.display='block'; alrt.textContent=`⚠️ WARNING: Queue depth ${queueDepth} > 100. Consider adding workers.`; }
+  } else {
+    bar.className = 'queue-bar';
+    if (alrt) alrt.style.display='none';
+  }
+}
+
+function qLog(msg) {
+  const log = document.getElementById('q-log');
+  if (!log) return;
+  const line = document.createElement('div');
+  line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  log.appendChild(line);
+  if (log.children.length > 6) log.removeChild(log.firstChild);
+}
+
+// ── BACKPRESSURE CHART ────────────────────────────────────────────────────
+const BP_SCENARIOS = {
+  balanced: {
+    label: 'Balanced (100/sec in, 100/sec out)',
+    producer: 100, consumer: 100,
+    color: '#22c55e',
+  },
+  spike: {
+    label: 'Traffic Spike (300/sec in, 100/sec out)',
+    producer: 300, consumer: 100,
+    color: '#ef4444',
+  },
+  slowdown: {
+    label: 'LLM Slowdown (100/sec in, 12/sec out)',
+    producer: 100, consumer: 12,
+    color: '#f59e0b',
+  },
+  autoscale: {
+    label: 'Autoscale Response (spike → scale workers)',
+    producer: 300, consumer: 100,
+    color: '#a855f7',
+    autoscale: true,
+  },
+};
+
+let activeScenario = 'spike';
+
+function buildBP() {
+  const c = document.getElementById('view-bp');
+  c.innerHTML = `
+    <div class="bp-controls" id="bp-btns"></div>
+    <canvas id="bp-canvas" height="200"></canvas>
+    <div class="bp-legend" id="bp-legend"></div>
+    <div style="margin-top:10px;padding:10px;border-radius:8px;border:1px solid var(--border);background:#040810;font-size:.7rem;color:#3a5a7a" id="bp-insight"></div>
+  `;
+  const btns = document.getElementById('bp-btns');
+  Object.entries(BP_SCENARIOS).forEach(([key, s]) => {
+    const btn = document.createElement('button');
+    btn.className = 'bp-btn' + (key === activeScenario ? ' active' : '');
+    btn.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+    btn.onclick = () => {
+      activeScenario = key;
+      document.querySelectorAll('.bp-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      drawBPChart(key);
+    };
+    btns.appendChild(btn);
+  });
+  drawBPChart(activeScenario);
+}
+
+function drawBPChart(scenarioKey) {
+  const canvas = document.getElementById('bp-canvas');
+  if (!canvas) return;
+  const ctx    = canvas.getContext('2d');
+  const W      = canvas.offsetWidth || 600;
+  const H      = 200;
+  canvas.width = W;
+  canvas.height= H;
+
+  const s = BP_SCENARIOS[scenarioKey];
+  const duration = 30; // seconds
+  const dt = 0.5;
+  const steps = duration / dt;
+
+  // Generate queue depth data
+  const data = [];
+  let depth = 0;
+  for (let i = 0; i <= steps; i++) {
+    const t = i * dt;
+    let consumer = s.consumer;
+    if (s.autoscale && t >= 10) consumer = 300; // autoscale at t=10
+    const net = (s.producer - consumer) * dt;
+    depth = Math.max(0, depth + net);
+    data.push({t, depth: Math.round(depth)});
+  }
+
+  const maxDepth = Math.max(...data.map(d=>d.depth), 1);
+  const pad = {top:20, right:20, bottom:30, left:50};
+  const cW = W - pad.left - pad.right;
+  const cH = H - pad.top - pad.bottom;
+
+  ctx.clearRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(30,58,95,0.4)';
+  ctx.lineWidth = 1;
+  for (let i=0;i<=4;i++) {
+    const y = pad.top + (cH/4)*i;
+    ctx.beginPath(); ctx.moveTo(pad.left,y); ctx.lineTo(pad.left+cW,y); ctx.stroke();
+    ctx.fillStyle='#1e3a5f'; ctx.font='10px monospace';
+    ctx.fillText(Math.round(maxDepth*(1-i/4)), 2, y+4);
+  }
+
+  // Alert threshold line
+  const alertY = pad.top + cH * (1 - 100/maxDepth);
+  if (alertY > pad.top && alertY < pad.top+cH) {
+    ctx.strokeStyle='rgba(245,158,11,0.4)'; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(pad.left,alertY); ctx.lineTo(pad.left+cW,alertY); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(245,158,11,0.6)'; ctx.font='9px monospace';
+    ctx.fillText('ALERT threshold', pad.left+4, alertY-3);
+  }
+
+  // Autoscale marker
+  if (s.autoscale) {
+    const scaleX = pad.left + (10/duration)*cW;
+    ctx.strokeStyle='rgba(168,85,247,0.6)'; ctx.setLineDash([4,4]);
+    ctx.beginPath(); ctx.moveTo(scaleX,pad.top); ctx.lineTo(scaleX,pad.top+cH); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(168,85,247,0.8)'; ctx.font='9px monospace';
+    ctx.fillText('autoscale', scaleX+3, pad.top+12);
+  }
+
+  // Queue depth line
+  ctx.strokeStyle = s.color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = s.color;
+  ctx.shadowBlur = 4;
+  ctx.beginPath();
+  data.forEach((d,i) => {
+    const x = pad.left + (d.t/duration)*cW;
+    const y = pad.top + cH*(1 - d.depth/maxDepth);
+    i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // X axis labels
+  ctx.fillStyle='#1e3a5f'; ctx.font='10px monospace';
+  for (let t=0;t<=duration;t+=5) {
+    const x = pad.left + (t/duration)*cW;
+    ctx.fillText(t+'s', x-8, H-5);
+  }
+
+  // Insight
+  const maxD = Math.max(...data.map(d=>d.depth));
+  const finalD = data[data.length-1].depth;
+  const insight = document.getElementById('bp-insight');
+  if (insight) {
+    insight.innerHTML = `<b style="color:${s.color}">${s.label}</b><br>
+      Peak queue depth: <b>${maxD.toLocaleString()}</b> tasks | 
+      Final depth: <b>${finalD.toLocaleString()}</b> tasks | 
+      ${maxD > 100 ? '⚠️ Alert threshold breached' : '✅ Within normal range'}
+      ${s.autoscale ? ' | 🟣 Autoscale at t=10s reduced queue' : ''}`;
+  }
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='compare') buildCompare();
+  else if(type==='queue') buildQueue();
+  else buildBP();
+}
+
+window.addEventListener('resize', () => {
+  if (document.getElementById('view-bp').classList.contains('on')) drawBPChart(activeScenario);
+});
+
+show('compare');
+</script>
+</body>
+</html>
