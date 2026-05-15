@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 22 — Failure Modes in AI Systems</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --healthy:#22c55e;--degraded:#f59e0b;--down:#ef4444;
+  --halluc:#a855f7;--stale:#00e5ff;--cascade:#f472b6;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(239,68,68,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(239,68,68,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--down)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-stack.on{color:var(--down);border-color:var(--down);box-shadow:0 0 14px rgba(239,68,68,.25)}
+.tab.t-halluc.on{color:var(--halluc);border-color:var(--halluc);box-shadow:0 0 14px rgba(168,85,247,.25)}
+.tab.t-fallback.on{color:var(--healthy);border-color:var(--healthy);box-shadow:0 0 14px rgba(34,197,94,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--down),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(239,68,68,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* STACK VIEW */
+.stack-controls{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.sc-btn{padding:7px 14px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.sc-btn:hover{color:#7a9aba;border-color:#2a3a5a}
+.sc-btn.kafka-fail{border-color:var(--down);color:var(--down)}
+.sc-btn.pinot-fail{border-color:var(--degraded);color:var(--degraded)}
+.sc-btn.vec-fail{border-color:var(--halluc);color:var(--halluc)}
+.sc-btn.llm-fail{border-color:var(--cascade);color:var(--cascade)}
+
+.stack-layers{display:flex;flex-direction:column;gap:8px}
+.layer-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:#040810;transition:all .3s}
+.layer-row.healthy{border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.04)}
+.layer-row.degraded{border-color:rgba(245,158,11,.3);background:rgba(245,158,11,.04)}
+.layer-row.down{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.04);animation:pulse-fail .8s ease-in-out infinite}
+@keyframes pulse-fail{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.2)}50%{box-shadow:0 0 0 8px rgba(239,68,68,.0)}}
+.layer-icon{font-size:1.2rem;min-width:28px}
+.layer-name{font-size:.75rem;font-weight:600;color:#c8d0e8;min-width:140px}
+.layer-status{font-size:.65rem;font-family:monospace;flex:1}
+.layer-status.healthy{color:var(--healthy)}.layer-status.degraded{color:var(--degraded)}.layer-status.down{color:var(--down)}
+.propagation-arrow{text-align:center;font-size:.7rem;color:var(--dim);padding:2px 0}
+.propagation-arrow.active{color:var(--down);animation:blink .5s ease-in-out 3}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* HALLUCINATION VIEW */
+.halluc-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:700px){.halluc-grid{grid-template-columns:1fr}}
+.hbox{border-radius:10px;border:1px solid var(--border);background:#040810;overflow:hidden}
+.hbox-header{padding:9px 14px;font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase}
+.hbox-header.bad{background:rgba(239,68,68,.07);color:var(--down);border-bottom:1px solid rgba(239,68,68,.12)}
+.hbox-header.good{background:rgba(34,197,94,.07);color:var(--healthy);border-bottom:1px solid rgba(34,197,94,.12)}
+.hbox-header.warn{background:rgba(245,158,11,.07);color:var(--degraded);border-bottom:1px solid rgba(245,158,11,.12)}
+.hbox-body{padding:12px 14px;font-size:.7rem;line-height:1.7}
+.hbox-body.bad-t{color:#7a3a3a}.hbox-body.good-t{color:#3a7a5a}.hbox-body.warn-t{color:#7a6a3a}
+.halluc-highlight{background:rgba(239,68,68,.15);border-radius:3px;padding:0 2px;color:var(--down);font-weight:600}
+.valid-highlight{background:rgba(34,197,94,.15);border-radius:3px;padding:0 2px;color:var(--healthy);font-weight:600}
+
+/* FALLBACK VIEW */
+.fallback-scenarios{display:flex;flex-direction:column;gap:8px}
+.fb-scenario{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.fb-scenario.in{opacity:1;transform:translateX(0)}
+.fb-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.fb-tier{font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px}
+.fb-tier.t1{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--healthy)}
+.fb-tier.t2{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:var(--degraded)}
+.fb-tier.t3{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.2);color:var(--down)}
+.fb-tier.t4{background:rgba(100,116,139,.1);border:1px solid rgba(100,116,139,.2);color:#64748b}
+.fb-label{font-size:.72rem;font-weight:600;color:#c8d0e8}
+.fb-detail{font-size:.65rem;color:#3a5a7a;font-family:monospace}
+.fb-response{font-size:.65rem;margin-top:4px;padding:4px 8px;border-radius:4px;background:#060a16}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 5 · Day 22</div>
+    <h1>Failure Modes in <span>AI Systems</span></h1>
+    <p class="sub">Hallucinations · Stale Retrieval · Cascades · Graceful Degradation</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-stack"   onclick="show('stack')">⚡ Failure Propagation</button>
+    <button class="tab t-halluc"  onclick="show('halluc')">🧠 Hallucination Types</button>
+    <button class="tab t-fallback"onclick="show('fallback')">🛡️ Graceful Degradation</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-stack"></div>
+    <div class="view" id="view-halluc"></div>
+    <div class="view" id="view-fallback"></div>
+  </div>
+</div>
+
+<script>
+// ── STACK VIEW ─────────────────────────────────────────────────────────────
+const LAYERS = [
+  {id:'kafka',  icon:'⚡', name:'Kafka',        status:'healthy', detail:'Consumer lag: 0ms | Throughput: 240K/sec'},
+  {id:'flink',  icon:'🌊', name:'Flink',        status:'healthy', detail:'Processing lag: 18ms | Checkpoints: OK'},
+  {id:'pinot',  icon:'🔷', name:'Pinot',        status:'healthy', detail:'Query P99: 68ms | Segments: healthy'},
+  {id:'vector', icon:'🧠', name:'Vector Store', status:'healthy', detail:'Index age: 45s | Precision@4: 0.91'},
+  {id:'llm',    icon:'✨', name:'LLM API',      status:'healthy', detail:'Latency P99: 580ms | Error rate: 0.2%'},
+  {id:'output', icon:'📤', name:'Response',     status:'healthy', detail:'Confidence: 0.92 | Validation: PASS'},
+];
+
+const FAILURE_SCENARIOS = {
+  kafka: {
+    layer: 'kafka',
+    cascade: ['flink','pinot','vector','llm','output'],
+    messages: {
+      kafka:  'Consumer lag: 45,000 messages | Throughput dropping',
+      flink:  'Enrichment delayed — events not arriving from Kafka',
+      pinot:  'Data freshness degrading — no new events ingested',
+      vector: 'Embedding refresh blocked — no new events to embed',
+      llm:    'Retrieving stale context — data 2+ hours old',
+      output: '⚠️ DEGRADED: Answers based on stale data',
+    }
+  },
+  pinot: {
+    layer: 'pinot',
+    cascade: ['llm','output'],
+    messages: {
+      pinot:  'Broker restarting — SQL queries returning empty',
+      llm:    'No structured metrics — tool call returned empty result',
+      output: '❌ WRONG: "No errors detected" (Pinot was unavailable)',
+    }
+  },
+  vector: {
+    layer: 'vector',
+    cascade: ['llm','output'],
+    messages: {
+      vector: 'Index unavailable — semantic search returning empty',
+      llm:    'No behavioral context — LLM has only structured metrics',
+      output: '⚠️ PARTIAL: Metrics-only response, no behavioral story',
+    }
+  },
+  llm: {
+    layer: 'llm',
+    cascade: ['output'],
+    messages: {
+      llm:    'API timeout — 3 retries failed — circuit breaker OPEN',
+      output: '🛡️ FALLBACK: Rule-based response (LLM unavailable)',
+    }
+  },
+};
+
+let stackRunning = false;
+
+function buildStack() {
+  const c = document.getElementById('view-stack');
+  c.innerHTML = `
+    <div class="stack-controls">
+      <button class="sc-btn kafka-fail" onclick="triggerFailure('kafka')">⚡ Kafka Lag</button>
+      <button class="sc-btn pinot-fail" onclick="triggerFailure('pinot')">🔷 Pinot Down</button>
+      <button class="sc-btn vec-fail"   onclick="triggerFailure('vector')">🧠 Vector Down</button>
+      <button class="sc-btn llm-fail"   onclick="triggerFailure('llm')">✨ LLM Timeout</button>
+      <button class="sc-btn"            onclick="resetStack()">↺ Reset</button>
+    </div>
+    <div class="stack-layers" id="stack-layers"></div>
+  `;
+  renderStack(LAYERS.map(l => ({...l})));
+}
+
+function renderStack(layers) {
+  const container = document.getElementById('stack-layers');
+  if (!container) return;
+  container.innerHTML = '';
+  layers.forEach((l, i) => {
+    if (i > 0) {
+      const arr = document.createElement('div');
+      arr.className = 'propagation-arrow';
+      arr.id = `arr-${i}`;
+      arr.textContent = '↓';
+      container.appendChild(arr);
+    }
+    const row = document.createElement('div');
+    row.className = `layer-row ${l.status}`;
+    row.id = `layer-${l.id}`;
+    row.innerHTML = `
+      <span class="layer-icon">${l.icon}</span>
+      <span class="layer-name">${l.name}</span>
+      <span class="layer-status ${l.status}" id="detail-${l.id}">${l.detail}</span>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function triggerFailure(failureKey) {
+  if (stackRunning) return;
+  stackRunning = true;
+  resetStack(false);
+
+  const scenario = FAILURE_SCENARIOS[failureKey];
+  const allLayers = LAYERS.map(l => ({...l}));
+
+  // Set the failing layer
+  const failIdx = allLayers.findIndex(l => l.id === scenario.layer);
+  if (failIdx >= 0) {
+    allLayers[failIdx].status = 'down';
+    allLayers[failIdx].detail = scenario.messages[scenario.layer] || 'DOWN';
+  }
+
+  renderStack(allLayers);
+
+  // Animate cascade
+  scenario.cascade.forEach((layerId, i) => {
+    setTimeout(() => {
+      const row = document.getElementById(`layer-${layerId}`);
+      const det = document.getElementById(`detail-${layerId}`);
+      const arr = document.getElementById(`arr-${LAYERS.findIndex(l=>l.id===layerId)}`);
+      if (row) {
+        const isOutput = layerId === 'output';
+        row.className = `layer-row ${isOutput ? 'degraded' : 'degraded'}`;
+        if (det) {
+          det.className = `layer-status degraded`;
+          det.textContent = scenario.messages[layerId] || 'Affected by upstream failure';
+        }
+        if (arr) arr.className = 'propagation-arrow active';
+      }
+    }, (i + 1) * 600);
+  });
+
+  setTimeout(() => { stackRunning = false; }, scenario.cascade.length * 600 + 200);
+}
+
+function resetStack(animate=true) {
+  stackRunning = false;
+  renderStack(LAYERS.map(l => ({...l})));
+}
+
+// ── HALLUCINATION VIEW ─────────────────────────────────────────────────────
+function buildHalluc() {
+  const c = document.getElementById('view-halluc');
+  c.innerHTML = `
+    <div class="halluc-grid">
+      <div class="hbox">
+        <div class="hbox-header bad">❌ Model Hallucination</div>
+        <div class="hbox-body bad-t">
+          <b>Context provided:</b><br>
+          "User u_4821 had <span class="valid-highlight">5 errors</span> in 7 days."<br><br>
+          <b>LLM output:</b><br>
+          "User u_4821 has had <span class="halluc-highlight">47 errors over the past month</span>, 
+          indicating a persistent infrastructure issue. Their error rate of 
+          <span class="halluc-highlight">89%</span> is the 
+          <span class="halluc-highlight">highest in their cohort</span>."<br><br>
+          <span style="font-size:.62rem;color:var(--down)">❌ 47, 89%, "highest in cohort" — none of these are in the context. LLM invented them.</span>
+        </div>
+      </div>
+      <div class="hbox">
+        <div class="hbox-header warn">⚠️ Stale Context Reasoning</div>
+        <div class="hbox-body warn-t">
+          <b>Context provided (4h old):</b><br>
+          "User u_4821 viewed /home. Normal session."<br><br>
+          <b>Reality (not in context):</b><br>
+          User hit 8 checkout errors in the last 2 hours.<br><br>
+          <b>LLM output:</b><br>
+          "User u_4821 appears healthy. No errors detected. No action required."<br><br>
+          <span style="font-size:.62rem;color:var(--degraded)">⚠️ LLM is NOT hallucinating — it's reasoning correctly over stale data. Fix: freshness monitoring.</span>
+        </div>
+      </div>
+      <div class="hbox">
+        <div class="hbox-header bad">❌ Noisy Context (Wrong User)</div>
+        <div class="hbox-body bad-t">
+          <b>Context retrieved:</b><br>
+          "User u_4821 hit error on /checkout" ✅<br>
+          "<span class="halluc-highlight">User u_9901 upgraded to pro plan</span>" ← wrong user<br><br>
+          <b>LLM output:</b><br>
+          "User u_4821 recently <span class="halluc-highlight">upgraded to pro plan</span> and is showing strong engagement."<br><br>
+          <span style="font-size:.62rem;color:var(--down)">❌ LLM confused by u_9901's data. Fix: metadata filter in vector search.</span>
+        </div>
+      </div>
+      <div class="hbox">
+        <div class="hbox-header good">✅ Validated Output</div>
+        <div class="hbox-body good-t">
+          <b>Validation checks:</b><br>
+          ✅ Confidence ≥ 0.6 (actual: 0.92)<br>
+          ✅ All cited numbers in context (5 errors ✓)<br>
+          ✅ Context freshness < 1h (actual: 30s)<br>
+          ✅ User ID consistent (u_4821 only)<br><br>
+          <b>LLM output (passed validation):</b><br>
+          "User u_4821 has <span class="valid-highlight">5 errors</span> (50% rate). Churn risk: HIGH."<br><br>
+          <span style="font-size:.62rem;color:var(--healthy)">✅ Grounded in context. Validated before delivery.</span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── FALLBACK VIEW ──────────────────────────────────────────────────────────
+const FALLBACK_TIERS = [
+  {
+    tier:'T1', cls:'t1', label:'All components healthy',
+    detail:'Pinot ✅ | Vector Store ✅ | LLM ✅',
+    response:'Full analysis: "User u_4821 is at HIGH churn risk. 5 errors (50% rate). Upgrade intent 0.82. Escalate checkout fix." | Confidence: 92%',
+  },
+  {
+    tier:'T2', cls:'t2', label:'Pinot down — using cached metrics',
+    detail:'Pinot ❌ (cache: 4min old) | Vector Store ✅ | LLM ✅',
+    response:'Degraded analysis: "User u_4821 (cached metrics: 3 errors, 30% rate). Behavioral context available. [STALE: metrics 4min old]" | Confidence: 65%',
+  },
+  {
+    tier:'T2', cls:'t2', label:'Vector store down — metrics only',
+    detail:'Pinot ✅ | Vector Store ❌ | LLM ✅',
+    response:'Partial analysis: "User u_4821: 5 errors (50% rate), churn_risk=TRUE. [No behavioral context available]" | Confidence: 70%',
+  },
+  {
+    tier:'T3', cls:'t3', label:'LLM down — rule-based fallback',
+    detail:'Pinot ✅ | Vector Store ✅ | LLM ❌',
+    response:'Rule-based: "[RULE-BASED] User has 5 errors (50% rate). Churn risk: HIGH. (LLM unavailable)" | Confidence: 65%',
+  },
+  {
+    tier:'T4', cls:'t4', label:'All components down',
+    detail:'Pinot ❌ | Vector Store ❌ | LLM ❌',
+    response:'Graceful failure: "Analysis unavailable. All data sources are currently down. Retry in 5 minutes." | Confidence: 0%',
+  },
+];
+
+function buildFallback() {
+  const c = document.getElementById('view-fallback');
+  c.innerHTML = `
+    <div style="font-size:.65rem;color:var(--dim);margin-bottom:12px">
+      Graceful degradation: system never returns 503. Always returns best available response.
+    </div>
+    <div class="fallback-scenarios" id="fb-list"></div>
+  `;
+  const list = document.getElementById('fb-list');
+  FALLBACK_TIERS.forEach((t, i) => {
+    const el = document.createElement('div');
+    el.className = 'fb-scenario';
+    el.innerHTML = `
+      <div class="fb-header">
+        <span class="fb-tier ${t.cls}">Tier ${t.tier}</span>
+        <span class="fb-label">${t.label}</span>
+      </div>
+      <div class="fb-detail">${t.detail}</div>
+      <div class="fb-response" style="color:${t.cls==='t1'?'var(--healthy)':t.cls==='t4'?'#64748b':'var(--degraded)'}">${t.response}</div>
+    `;
+    list.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 150);
+  });
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='stack') buildStack();
+  else if(type==='halluc') buildHalluc();
+  else buildFallback();
+}
+
+show('stack');
+</script>
+</body>
+</html>
