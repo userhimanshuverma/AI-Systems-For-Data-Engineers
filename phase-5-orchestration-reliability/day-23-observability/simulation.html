@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Day 23 — Observability for AI Systems</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#03050e;--panel:#060a16;--border:#0c1428;
+  --good:#22c55e;--warn:#f59e0b;--bad:#ef4444;
+  --trace:#00e5ff;--eval:#a855f7;--metric:#4d9fff;
+  --txt:#94a3b8;--dim:#1e3a5f;
+}
+body{background:var(--bg);color:var(--txt);font-family:'Segoe UI',system-ui,monospace;min-height:100vh;overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(77,159,255,.012) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.012) 1px,transparent 1px);background-size:44px 44px;pointer-events:none;z-index:0}
+.wrap{position:relative;z-index:1;padding:24px 20px 60px;max-width:1200px;margin:0 auto}
+
+header{text-align:center;margin-bottom:28px}
+.badge{font-size:.62rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;margin-bottom:8px}
+h1{font-size:1.4rem;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+h1 span{color:var(--trace)}
+.sub{font-size:.75rem;color:var(--dim);letter-spacing:.06em}
+
+.tabs{display:flex;justify-content:center;gap:8px;margin-bottom:24px;flex-wrap:wrap}
+.tab{padding:8px 20px;border-radius:6px;font-size:.72rem;font-weight:700;letter-spacing:.07em;text-transform:uppercase;cursor:pointer;border:1px solid var(--border);background:var(--panel);color:var(--dim);transition:all .2s}
+.tab:hover{color:#4a7aaa;border-color:var(--dim)}
+.tab.t-dash.on{color:var(--metric);border-color:var(--metric);box-shadow:0 0 14px rgba(77,159,255,.25)}
+.tab.t-trace.on{color:var(--trace);border-color:var(--trace);box-shadow:0 0 14px rgba(0,229,255,.25)}
+.tab.t-eval.on{color:var(--eval);border-color:var(--eval);box-shadow:0 0 14px rgba(168,85,247,.25)}
+
+.board{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px;position:relative;overflow:hidden;min-height:520px}
+.board::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--trace),transparent);opacity:.2}
+.scan{position:absolute;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,rgba(0,229,255,.07),transparent);animation:sc 7s linear infinite;pointer-events:none}
+@keyframes sc{0%{top:0}100%{top:100%}}
+
+.view{display:none}.view.on{display:block}
+
+/* DASHBOARD */
+.dash-controls{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.dc-btn{padding:7px 14px;border-radius:6px;font-size:.7rem;font-weight:700;cursor:pointer;border:1px solid var(--border);background:#040810;color:var(--dim);transition:all .2s}
+.dc-btn:hover{color:#7a9aba;border-color:#2a3a5a}
+.dc-btn.degrade{border-color:var(--bad);color:var(--bad)}
+.dc-btn.recover{border-color:var(--good);color:var(--good)}
+
+.metrics-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+@media(max-width:700px){.metrics-grid{grid-template-columns:repeat(2,1fr)}}
+.mcard{border-radius:8px;border:1px solid var(--border);background:#040810;padding:12px;text-align:center;transition:all .3s}
+.mcard-val{font-size:1.2rem;font-weight:700;font-family:monospace;line-height:1;transition:color .3s}
+.mcard-lbl{font-size:.58rem;color:var(--dim);margin-top:3px;text-transform:uppercase;letter-spacing:.08em}
+.mcard.alert{border-color:var(--bad);background:rgba(239,68,68,.04)}
+.mcard.warn{border-color:var(--warn);background:rgba(245,158,11,.04)}
+
+.alert-feed{display:flex;flex-direction:column;gap:4px;max-height:120px;overflow-y:auto}
+.alert-item{padding:5px 10px;border-radius:5px;font-size:.65rem;font-family:monospace;opacity:0;animation:fadein .3s forwards}
+@keyframes fadein{to{opacity:1}}
+.alert-item.warn{background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);color:var(--warn)}
+.alert-item.crit{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--bad)}
+.alert-item.ok{background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);color:var(--good)}
+
+/* TRACE VIEW */
+.trace-list{display:flex;flex-direction:column;gap:8px}
+.trace-item{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.trace-item.in{opacity:1;transform:translateX(0)}
+.ti-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ti-id{font-size:.62rem;font-family:monospace;color:var(--trace)}
+.ti-total{font-size:.62rem;color:var(--dim);margin-left:auto}
+.spans{display:flex;flex-direction:column;gap:3px}
+.span-row{display:flex;align-items:center;gap:8px;font-size:.62rem}
+.span-name{min-width:160px;color:#4a6a8a;font-family:monospace}
+.span-bar-wrap{flex:1;height:8px;background:#0c1428;border-radius:4px;overflow:hidden}
+.span-bar{height:100%;border-radius:4px}
+.span-ms{min-width:50px;text-align:right;font-family:monospace;color:#3a5a7a}
+.span-ok{background:var(--good)}.span-warn{background:var(--warn)}.span-err{background:var(--bad)}
+
+/* EVAL VIEW */
+.eval-timeline{display:flex;flex-direction:column;gap:8px}
+.eval-row{border-radius:8px;border:1px solid var(--border);background:#040810;padding:10px 14px;opacity:.35;transform:translateX(-4px);transition:all .35s}
+.eval-row.in{opacity:1;transform:translateX(0)}
+.er-header{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.er-type{font-size:.6rem;font-weight:700;padding:1px 6px;border-radius:4px}
+.er-type.daily{background:rgba(77,159,255,.1);border:1px solid rgba(77,159,255,.2);color:var(--metric)}
+.er-type.deploy{background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.2);color:var(--eval)}
+.er-type.spot{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.2);color:var(--good)}
+.er-label{font-size:.72rem;font-weight:600;color:#c8d0e8}
+.er-metrics{display:flex;gap:12px;flex-wrap:wrap;font-size:.65rem;font-family:monospace;color:#3a5a7a}
+.er-issues{font-size:.62rem;color:var(--bad);margin-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="badge">Phase 5 · Day 23</div>
+    <h1>AI System <span>Observability</span></h1>
+    <p class="sub">Metrics · Traces · Evaluations · Alerts</p>
+  </header>
+
+  <div class="tabs">
+    <button class="tab t-dash"  onclick="show('dash')">📊 Dashboard</button>
+    <button class="tab t-trace" onclick="show('trace')">🔍 Traces</button>
+    <button class="tab t-eval"  onclick="show('eval')">🧪 Evaluations</button>
+  </div>
+
+  <div class="board" id="board">
+    <div class="scan"></div>
+    <div class="view" id="view-dash"></div>
+    <div class="view" id="view-trace"></div>
+    <div class="view" id="view-eval"></div>
+  </div>
+</div>
+
+<script>
+// ── DASHBOARD ──────────────────────────────────────────────────────────────
+const METRICS_HEALTHY = [
+  {id:'precision',  label:'Retrieval Precision@4', val:'0.91', color:'var(--good)', alert:false},
+  {id:'halluc',     label:'Hallucination Rate',    val:'3%',   color:'var(--good)', alert:false},
+  {id:'emb_age',    label:'Embedding Age P99',     val:'45s',  color:'var(--good)', alert:false},
+  {id:'confidence', label:'LLM Confidence P10',    val:'0.72', color:'var(--good)', alert:false},
+  {id:'latency',    label:'E2E Latency P99',        val:'650ms',color:'var(--good)', alert:false},
+  {id:'cost',       label:'Cost/Query',             val:'$0.00048',color:'var(--good)',alert:false},
+  {id:'dag_success',label:'DAG Success Rate',       val:'98%',  color:'var(--good)', alert:false},
+  {id:'stale',      label:'Stale Retrieval Rate',   val:'2%',   color:'var(--good)', alert:false},
+];
+const METRICS_DEGRADED = [
+  {id:'precision',  label:'Retrieval Precision@4', val:'0.62', color:'var(--bad)',  alert:true},
+  {id:'halluc',     label:'Hallucination Rate',    val:'18%',  color:'var(--bad)',  alert:true},
+  {id:'emb_age',    label:'Embedding Age P99',     val:'4h',   color:'var(--bad)',  alert:true},
+  {id:'confidence', label:'LLM Confidence P10',    val:'0.41', color:'var(--bad)',  alert:true},
+  {id:'latency',    label:'E2E Latency P99',        val:'1800ms',color:'var(--warn)',alert:false},
+  {id:'cost',       label:'Cost/Query',             val:'$0.00089',color:'var(--warn)',alert:false},
+  {id:'dag_success',label:'DAG Success Rate',       val:'72%',  color:'var(--bad)',  alert:true},
+  {id:'stale',      label:'Stale Retrieval Rate',   val:'41%',  color:'var(--bad)',  alert:true},
+];
+
+let dashState = 'healthy';
+let alertFeed = [];
+
+function buildDash() {
+  const c = document.getElementById('view-dash');
+  c.innerHTML = `
+    <div class="dash-controls">
+      <button class="dc-btn degrade" onclick="degradeDash()">⬇️ Trigger Degradation</button>
+      <button class="dc-btn recover" onclick="recoverDash()">⬆️ Recover</button>
+    </div>
+    <div class="metrics-grid" id="metrics-grid"></div>
+    <div style="font-size:.65rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:8px">Alert Feed</div>
+    <div class="alert-feed" id="alert-feed"></div>
+  `;
+  renderMetrics(METRICS_HEALTHY);
+  addAlert('ok', '✅ All metrics within normal range');
+}
+
+function renderMetrics(metrics) {
+  const grid = document.getElementById('metrics-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  metrics.forEach(m => {
+    const card = document.createElement('div');
+    card.className = 'mcard' + (m.alert ? ' alert' : '');
+    card.id = `mc-${m.id}`;
+    card.innerHTML = `<div class="mcard-val" style="color:${m.color}">${m.val}</div><div class="mcard-lbl">${m.label}</div>`;
+    grid.appendChild(card);
+  });
+}
+
+function addAlert(type, msg) {
+  const feed = document.getElementById('alert-feed');
+  if (!feed) return;
+  const item = document.createElement('div');
+  item.className = `alert-item ${type}`;
+  item.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  feed.insertBefore(item, feed.firstChild);
+  if (feed.children.length > 8) feed.removeChild(feed.lastChild);
+}
+
+function degradeDash() {
+  dashState = 'degraded';
+  renderMetrics(METRICS_DEGRADED);
+  setTimeout(() => addAlert('crit', '🔴 CRITICAL: Retrieval precision 0.62 < 0.70'), 200);
+  setTimeout(() => addAlert('crit', '🔴 CRITICAL: Hallucination rate 18% > 5%'), 400);
+  setTimeout(() => addAlert('crit', '🔴 CRITICAL: Embedding age 4h > 1h SLA'), 600);
+  setTimeout(() => addAlert('warn', '⚠️ WARNING: LLM confidence P10 0.41 < 0.65'), 800);
+  setTimeout(() => addAlert('crit', '🔴 CRITICAL: DAG success rate 72% < 95%'), 1000);
+}
+
+function recoverDash() {
+  dashState = 'healthy';
+  renderMetrics(METRICS_HEALTHY);
+  addAlert('ok', '✅ Embedding refresh completed — metrics recovering');
+  setTimeout(() => addAlert('ok', '✅ Retrieval precision restored to 0.91'), 500);
+  setTimeout(() => addAlert('ok', '✅ All metrics within normal range'), 1000);
+}
+
+// ── TRACE VIEW ─────────────────────────────────────────────────────────────
+const TRACES = [
+  {
+    id:'trace_a1b2c3', total:650, status:'ok',
+    spans:[
+      {name:'query_parse',       ms:5,   pct:1,  cls:'span-ok'},
+      {name:'pinot_query',       ms:68,  pct:10, cls:'span-ok'},
+      {name:'vector_search',     ms:52,  pct:8,  cls:'span-ok'},
+      {name:'context_assembly',  ms:8,   pct:1,  cls:'span-ok'},
+      {name:'llm_call',          ms:510, pct:78, cls:'span-ok'},
+      {name:'output_validation', ms:7,   pct:1,  cls:'span-ok'},
+    ]
+  },
+  {
+    id:'trace_b2c3d4', total:1820, status:'warn',
+    spans:[
+      {name:'query_parse',       ms:5,   pct:0,  cls:'span-ok'},
+      {name:'pinot_query',       ms:68,  pct:4,  cls:'span-ok'},
+      {name:'vector_search',     ms:52,  pct:3,  cls:'span-ok'},
+      {name:'context_assembly',  ms:8,   pct:0,  cls:'span-ok'},
+      {name:'llm_call',          ms:1680,pct:92, cls:'span-warn'},
+      {name:'output_validation', ms:7,   pct:0,  cls:'span-ok'},
+    ]
+  },
+  {
+    id:'trace_c3d4e5', total:320, status:'error',
+    spans:[
+      {name:'query_parse',       ms:5,   pct:2,  cls:'span-ok'},
+      {name:'pinot_query',       ms:68,  pct:21, cls:'span-ok'},
+      {name:'vector_search',     ms:240, pct:75, cls:'span-err', error:'ConnectionError: Vector store timeout'},
+    ]
+  },
+];
+
+function buildTrace() {
+  const c = document.getElementById('view-trace');
+  c.innerHTML = `<div class="trace-list" id="trace-list"></div>`;
+  const list = document.getElementById('trace-list');
+  TRACES.forEach((t, i) => {
+    const el = document.createElement('div');
+    el.className = 'trace-item';
+    const statusIcon = t.status==='ok'?'✅':t.status==='warn'?'⚠️':'❌';
+    el.innerHTML = `
+      <div class="ti-header">
+        <span style="font-size:.8rem">${statusIcon}</span>
+        <span class="ti-id">${t.id}</span>
+        <span class="ti-total">${t.total}ms total</span>
+      </div>
+      <div class="spans">
+        ${t.spans.map(s=>`
+          <div class="span-row">
+            <span class="span-name">${s.name}</span>
+            <div class="span-bar-wrap"><div class="span-bar ${s.cls}" style="width:${s.pct}%"></div></div>
+            <span class="span-ms">${s.ms}ms</span>
+            ${s.error?`<span style="font-size:.58rem;color:var(--bad);margin-left:4px">${s.error}</span>`:''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    list.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 200);
+  });
+}
+
+// ── EVAL VIEW ──────────────────────────────────────────────────────────────
+const EVALS = [
+  {type:'daily',  label:'Daily evaluation — baseline',
+   metrics:'precision=0.91 | grounding=0.96 | confidence=0.88 | latency=620ms | cost=$0.00048',
+   passed:true, issues:[]},
+  {type:'deploy', label:'Deployment check — new embedding model',
+   metrics:'precision=0.87 | grounding=0.93 | confidence=0.85 | latency=680ms | cost=$0.00052',
+   passed:true, issues:['Δ precision=-0.04 (within threshold)']},
+  {type:'daily',  label:'Daily evaluation — after embedding refresh failure',
+   metrics:'precision=0.62 | grounding=0.71 | confidence=0.52 | latency=1200ms | cost=$0.00089',
+   passed:false, issues:['LOW_PRECISION:0.62','LOW_GROUNDING:0.71','LOW_CONFIDENCE:0.52','HIGH_LATENCY:1200ms']},
+  {type:'spot',   label:'Spot check — post recovery',
+   metrics:'precision=0.89 | grounding=0.94 | confidence=0.86 | latency=640ms | cost=$0.00050',
+   passed:true, issues:[]},
+];
+
+function buildEval() {
+  const c = document.getElementById('view-eval');
+  c.innerHTML = `<div class="eval-timeline" id="eval-list"></div>`;
+  const list = document.getElementById('eval-list');
+  EVALS.forEach((e, i) => {
+    const el = document.createElement('div');
+    el.className = 'eval-row';
+    const icon = e.passed ? '✅' : '❌';
+    el.innerHTML = `
+      <div class="er-header">
+        <span class="er-type ${e.type}">${e.type.toUpperCase()}</span>
+        <span class="er-label">${icon} ${e.label}</span>
+      </div>
+      <div class="er-metrics">${e.metrics.split(' | ').map(m=>`<span>${m}</span>`).join('')}</div>
+      ${e.issues.length?`<div class="er-issues">${e.issues.map(i=>`⚠️ ${i}`).join(' | ')}</div>`:''}
+    `;
+    list.appendChild(el);
+    setTimeout(() => el.classList.add('in'), i * 200);
+  });
+}
+
+// ── SHOW ──────────────────────────────────────────────────────────────────
+function show(type) {
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(`view-${type}`).classList.add('on');
+  document.querySelector(`.t-${type}`).classList.add('on');
+  if(type==='dash') buildDash();
+  else if(type==='trace') buildTrace();
+  else buildEval();
+}
+
+show('dash');
+</script>
+</body>
+</html>
