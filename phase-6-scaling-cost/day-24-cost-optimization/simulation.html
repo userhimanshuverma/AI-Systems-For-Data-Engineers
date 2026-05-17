@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Day 24 - Cost Engineering Simulation</title>
+  <style>
+    :root {
+      --bg: #050814;
+      --panel: #0b1224;
+      --panel-2: #0f1730;
+      --line: #1f2b4d;
+      --text: #dbe6ff;
+      --muted: #8fa7d6;
+      --accent: #00d4ff;
+      --good: #1df2a2;
+      --bad: #ff5c7a;
+      --warn: #ffc857;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background:
+        radial-gradient(circle at 10% 20%, rgba(0, 212, 255, 0.10), transparent 35%),
+        radial-gradient(circle at 85% 15%, rgba(29, 242, 162, 0.12), transparent 32%),
+        linear-gradient(180deg, #040711, #050814 45%, #03050d);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 1220px;
+      margin: 0 auto;
+      padding: 24px 18px 40px;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-top: 8px;
+      margin-bottom: 20px;
+      font-size: 0.94rem;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,0.02), 0 18px 40px rgba(0,0,0,0.35);
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(100px, 1fr));
+      gap: 10px;
+      align-items: end;
+    }
+
+    .control {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+
+    .control input[type="range"],
+    .control select,
+    .control button {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #0a132b;
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 0.84rem;
+    }
+
+    .control button {
+      cursor: pointer;
+      transition: transform 120ms ease, border-color 120ms ease, box-shadow 180ms ease;
+    }
+
+    .control button:hover {
+      transform: translateY(-1px);
+      border-color: rgba(0, 212, 255, 0.6);
+      box-shadow: 0 0 12px rgba(0, 212, 255, 0.25);
+    }
+
+    .switch {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #0a132b;
+    }
+
+    .switch input { accent-color: var(--good); transform: scale(1.1); }
+
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .stats h2 {
+      margin: 0 0 12px;
+      font-size: 0.95rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .card {
+      background: #091127;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      min-height: 70px;
+      transition: box-shadow 200ms ease, border-color 200ms ease;
+    }
+
+    .card.flash {
+      border-color: rgba(0, 212, 255, 0.7);
+      box-shadow: 0 0 16px rgba(0, 212, 255, 0.35);
+    }
+
+    .label {
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    .value {
+      margin-top: 6px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .value.good { color: var(--good); }
+    .value.bad { color: var(--bad); }
+    .value.warn { color: var(--warn); }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .bar-wrap {
+      background: #0a132b;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+    }
+
+    .bar {
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #1b2f52, #254777);
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .bar > span {
+      display: block;
+      height: 100%;
+      width: 0%;
+      transition: width 260ms ease;
+      background: linear-gradient(90deg, var(--accent), var(--good));
+    }
+
+    .charts-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .chart-box {
+      background: #071024;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+    }
+
+    .chart-box h3 {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+
+    #tokenChart, #donutChart, #typeChart {
+      width: 100%;
+      height: 180px;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .log {
+      background: #071024;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 180px;
+      margin-top: 14px;
+    }
+
+    .log-head {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.78rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .log-body {
+      overflow: auto;
+      max-height: 180px;
+      font-size: 0.77rem;
+    }
+
+    .log-row {
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(143, 167, 214, 0.12);
+      font-family: Consolas, Menlo, monospace;
+      white-space: nowrap;
+    }
+
+    .log-row:last-child { border-bottom: none; }
+    .tag { font-weight: 700; padding-right: 8px; }
+    .tag.good { color: var(--good); }
+    .tag.bad { color: var(--bad); }
+    .tag.warn { color: var(--warn); }
+
+    .by-type {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .type-stat {
+      background: #091127;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: 0.78rem;
+    }
+
+    .type-stat .nm { color: var(--muted); }
+    .type-stat .cst { color: var(--warn); font-weight: 700; }
+
+    @media (max-width: 1100px) {
+      .controls { grid-template-columns: repeat(4, minmax(90px, 1fr)); }
+      .main-grid { grid-template-columns: 1fr; }
+      .charts-row { grid-template-columns: 1fr; }
+      .by-type { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    @media (max-width: 640px) {
+      .controls { grid-template-columns: repeat(2, 1fr); }
+      .cards { grid-template-columns: 1fr 1fr; }
+      .comparison { grid-template-columns: 1fr; }
+      .by-type { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Day 24 Simulation: Cost Engineering for LLM Systems</h1>
+    <p class="subtitle">
+      Simulates token growth, cache behavior, model routing, retrieval expansion — optimized vs unoptimized cost/latency impact.
+    </p>
+
+    <div class="panel">
+      <div class="controls">
+        <div class="control">
+          <label>Caching</label>
+          <div class="switch">
+            <input type="checkbox" id="toggleCaching" checked />
+            <span id="cachingState">Enabled</span>
+          </div>
+        </div>
+        <div class="control">
+          <label>Model Bias</label>
+          <select id="modelBias">
+            <option value="small" selected>Small-first</option>
+            <option value="large">Large-first</option>
+          </select>
+        </div>
+        <div class="control">
+          <label>Retrieval Depth: <span id="depthValue">4</span></label>
+          <input type="range" id="retrievalDepth" min="1" max="8" value="4" />
+        </div>
+        <div class="control">
+          <label>Batch Size: <span id="batchValue">20</span></label>
+          <input type="range" id="batchSize" min="5" max="100" value="20" />
+        </div>
+        <div class="control">
+          <label>Step</label>
+          <button id="runOne">Run 1</button>
+        </div>
+        <div class="control">
+          <label>Batch</label>
+          <button id="runBatch">Run Batch</button>
+        </div>
+        <div class="control">
+          <label>Auto</label>
+          <button id="toggleAuto">Start Auto</button>
+        </div>
+        <div class="control">
+          <label>Reset</label>
+          <button id="resetAll">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-grid">
+      <div class="panel stats">
+        <h2>Optimized System</h2>
+        <div class="cards" id="optCards">
+          <div class="card"><div class="label">Total Cost</div><div class="value good" id="optCost">$0.0000</div></div>
+          <div class="card"><div class="label">Avg Latency</div><div class="value" id="optLatency">0 ms</div></div>
+          <div class="card"><div class="label">Avg Tokens</div><div class="value" id="optTokens">0</div></div>
+          <div class="card"><div class="label">Cache Hit Rate</div><div class="value warn" id="optCacheRate">0%</div></div>
+          <div class="card"><div class="label">Small Calls</div><div class="value" id="optSmallCalls">0</div></div>
+          <div class="card"><div class="label">Large Calls</div><div class="value" id="optLargeCalls">0</div></div>
+        </div>
+      </div>
+      <div class="panel stats">
+        <h2>Unoptimized System</h2>
+        <div class="cards" id="unoptCards">
+          <div class="card"><div class="label">Total Cost</div><div class="value bad" id="unoptCost">$0.0000</div></div>
+          <div class="card"><div class="label">Avg Latency</div><div class="value" id="unoptLatency">0 ms</div></div>
+          <div class="card"><div class="label">Avg Tokens</div><div class="value" id="unoptTokens">0</div></div>
+          <div class="card"><div class="label">Cache Hit Rate</div><div class="value warn" id="unoptCacheRate">0%</div></div>
+          <div class="card"><div class="label">Small Calls</div><div class="value" id="unoptSmallCalls">0</div></div>
+          <div class="card"><div class="label">Large Calls</div><div class="value" id="unoptLargeCalls">0</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="comparison">
+      <div class="bar-wrap"><div class="label">Cost Savings</div><div class="value good" id="costSavings">0.0%</div><div class="bar"><span id="costSavingsBar"></span></div></div>
+      <div class="bar-wrap"><div class="label">Latency Improvement</div><div class="value good" id="latencySavings">0.0%</div><div class="bar"><span id="latencySavingsBar"></span></div></div>
+      <div class="bar-wrap"><div class="label">Token Reduction</div><div class="value good" id="tokenSavings">0.0%</div><div class="bar"><span id="tokenSavingsBar"></span></div></div>
+    </div>
+
+    <div class="charts-row">
+      <div class="chart-box">
+        <h3>Token Growth Trend</h3>
+        <canvas id="tokenChart"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Cost Breakdown (Optimized)</h3>
+        <canvas id="donutChart"></canvas>
+      </div>
+      <div class="chart-box">
+        <h3>Cost by Request Type</h3>
+        <canvas id="typeChart"></canvas>
+      </div>
+    </div>
+
+    <div class="charts-row" style="margin-top:0;">
+      <div class="chart-box" style="grid-column:1/-1;padding:10px 14px;">
+        <h3>Per-Request-Type Averages (Optimized)</h3>
+        <div class="by-type" id="typeBreakdown">
+          <div class="type-stat"><span class="nm">faq</span><br/><span class="cst">$0.0000</span> avg · 0 req</div>
+          <div class="type-stat"><span class="nm">operational_lookup</span><br/><span class="cst">$0.0000</span> avg · 0 req</div>
+          <div class="type-stat"><span class="nm">analysis</span><br/><span class="cst">$0.0000</span> avg · 0 req</div>
+          <div class="type-stat"><span class="nm">retention_analysis</span><br/><span class="cst">$0.0000</span> avg · 0 req</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="log">
+      <div class="log-head">Recent Requests</div>
+      <div class="log-body" id="logBody"></div>
+    </div>
+  </div>
+
+  <script>
+    const RATE = {
+      small: { inPer1k: 0.002, outPer1k: 0.004, latencyMs: 320 },
+      large: { inPer1k: 0.012, outPer1k: 0.024, latencyMs: 980 },
+    };
+
+    const CACHE_COLORS = ["#1df2a2", "#00d4ff", "#8fa7d6", "#ffc857"];
+    const TYPE_COLORS = ["#1df2a2", "#00d4ff", "#ffc857", "#ff5c7a"];
+    const TYPE_LABELS = ["faq", "operational_lookup", "analysis", "retention_analysis"];
+
+    const state = {
+      requests: 0,
+      optimized: { cost: 0, latency: 0, tokens: 0, cacheHits: 0, smallCalls: 0, largeCalls: 0 },
+      unoptimized: { cost: 0, latency: 0, tokens: 0, cacheHits: 0, smallCalls: 0, largeCalls: 0 },
+      history: { optimizedTokens: [], unoptimizedTokens: [] },
+      autoTimer: null,
+      logRows: [],
+      typeStats: {},
+    };
+
+    TYPE_LABELS.forEach(t => { state.typeStats[t] = { cost: 0, count: 0, latency: 0, tokens: 0 }; });
+
+    const queryTypes = [
+      { type: "faq", weight: 0.42 },
+      { type: "operational_lookup", weight: 0.25 },
+      { type: "analysis", weight: 0.23 },
+      { type: "retention_analysis", weight: 0.10 },
+    ];
+
+    function weightedQueryType() {
+      const p = Math.random();
+      let cum = 0;
+      for (const item of queryTypes) { cum += item.weight; if (p <= cum) return item.type; }
+      return "analysis";
+    }
+
+    function randInt(m, n) { return Math.floor(Math.random() * (n - m + 1)) + m; }
+
+    function chooseOptimizedModel(queryType, complexity, modelBias) {
+      if (queryType === "faq" || queryType === "operational_lookup") return "small";
+      if (queryType === "retention_analysis") return "large";
+      if (modelBias === "small") return complexity > 0.72 ? "large" : "small";
+      return complexity > 0.45 ? "large" : "small";
+    }
+
+    function cacheHitProbability(queryType) {
+      if (queryType === "faq") return 0.72;
+      if (queryType === "operational_lookup") return 0.30;
+      if (queryType === "analysis") return 0.10;
+      return 0.04;
+    }
+
+    function simulatePath({ optimized, queryType, retrievalDepth, modelBias, cachingEnabled }) {
+      const complexity = Math.random();
+      const baseQueryTokens = randInt(22, 96);
+      const outputTokens = queryType === "faq" ? randInt(60, 120) : randInt(120, 260);
+      const depth = optimized ? retrievalDepth : retrievalDepth + 2;
+      const retrievalTokensPerDoc = randInt(95, 130);
+      const retrievalTokensRaw = depth * retrievalTokensPerDoc;
+      const historyTokens = optimized ? randInt(45, 130) : randInt(130, 280);
+      const redundantTokens = optimized ? randInt(20, 70) : randInt(160, 320);
+      const systemPromptTokens = optimized ? 85 : 260;
+      const retrievalTokens = optimized ? Math.floor(retrievalTokensRaw * 0.68) : retrievalTokensRaw;
+      const inputTokensPerCall = baseQueryTokens + systemPromptTokens + historyTokens + retrievalTokens + redundantTokens;
+      const loopProbability = optimized ? 0.06 : 0.18;
+      const retryProbability = optimized ? 0.03 : 0.10;
+      const loops = Math.random() < loopProbability && queryType !== "faq" ? randInt(1, 2) : 0;
+      const retries = Math.random() < retryProbability ? 1 : 0;
+      const calls = 1 + loops + retries;
+
+      if (optimized && cachingEnabled && Math.random() < cacheHitProbability(queryType)) {
+        return { cost: 0, latencyMs: randInt(14, 28), tokens: 0, cacheHit: true, model: "cache" };
+      }
+
+      const model = optimized ? chooseOptimizedModel(queryType, complexity, modelBias) : "large";
+      const rate = RATE[model];
+      const totalInputTokens = inputTokensPerCall * calls;
+      const totalOutputTokens = outputTokens * calls;
+      const modelCost = (totalInputTokens / 1000) * rate.inPer1k + (totalOutputTokens / 1000) * rate.outPer1k;
+      const retrievalInfraCost = depth * (optimized ? 0.00010 : 0.00022);
+      const orchestrationCost = optimized ? 0.00012 : 0.00035;
+
+      return {
+        cost: modelCost + retrievalInfraCost + orchestrationCost,
+        latencyMs: rate.latencyMs * calls + depth * (optimized ? 30 : 52),
+        tokens: totalInputTokens + totalOutputTokens,
+        cacheHit: false,
+        model,
+      };
+    }
+
+    function simulateOneRequest() {
+      const cachingEnabled = document.getElementById("toggleCaching").checked;
+      const modelBias = document.getElementById("modelBias").value;
+      const retrievalDepth = Number(document.getElementById("retrievalDepth").value);
+      const queryType = weightedQueryType();
+
+      const opt = simulatePath({ optimized: true, queryType, retrievalDepth, modelBias, cachingEnabled });
+      const unopt = simulatePath({ optimized: false, queryType, retrievalDepth, modelBias, cachingEnabled });
+
+      state.requests += 1;
+      state.optimized.cost += opt.cost;
+      state.optimized.latency += opt.latencyMs;
+      state.optimized.tokens += opt.tokens;
+      state.optimized.cacheHits += opt.cacheHit ? 1 : 0;
+      state.optimized.smallCalls += opt.model === "small" ? 1 : 0;
+      state.optimized.largeCalls += opt.model === "large" ? 1 : 0;
+
+      state.unoptimized.cost += unopt.cost;
+      state.unoptimized.latency += unopt.latencyMs;
+      state.unoptimized.tokens += unopt.tokens;
+      state.unoptimized.cacheHits += unopt.cacheHit ? 1 : 0;
+      state.unoptimized.smallCalls += unopt.model === "small" ? 1 : 0;
+      state.unoptimized.largeCalls += unopt.model === "large" ? 1 : 0;
+
+      state.history.optimizedTokens.push(opt.tokens);
+      state.history.unoptimizedTokens.push(unopt.tokens);
+      if (state.history.optimizedTokens.length > 60) {
+        state.history.optimizedTokens.shift();
+        state.history.unoptimizedTokens.shift();
+      }
+
+      if (state.typeStats[queryType]) {
+        state.typeStats[queryType].cost += opt.cost;
+        state.typeStats[queryType].count += 1;
+        state.typeStats[queryType].latency += opt.latencyMs;
+        state.typeStats[queryType].tokens += opt.tokens;
+      }
+
+      addLogRow(queryType, opt, unopt);
+      updateDashboard();
+      drawTokenChart();
+      drawDonutChart();
+      drawTypeChart();
+      updateTypeBreakdown();
+    }
+
+    function addLogRow(queryType, opt, unopt) {
+      const diff = unopt.cost - opt.cost;
+      const row = {
+        text: `${queryType.padEnd(22)} opt:${opt.model.padEnd(6)} $${opt.cost.toFixed(4)} | unopt:$${unopt.cost.toFixed(4)} | Δ$${diff.toFixed(4)}`,
+        mode: opt.cacheHit ? "good" : "warn",
+      };
+      state.logRows.unshift(row);
+      if (state.logRows.length > 25) state.logRows.pop();
+
+      const logBody = document.getElementById("logBody");
+      logBody.innerHTML = "";
+      for (const item of state.logRows) {
+        const line = document.createElement("div");
+        line.className = "log-row";
+        line.innerHTML = `<span class="tag ${item.mode}">[${item.mode.toUpperCase()}]</span>${item.text}`;
+        logBody.appendChild(line);
+      }
+    }
+
+    function safeAvg(total, count) { return count > 0 ? total / count : 0; }
+    function pct(n, d) { return d > 0 ? (n / d) * 100 : 0; }
+
+    function flashCards(id) {
+      document.querySelectorAll(`#${id} .card`).forEach(c => {
+        c.classList.add("flash");
+        setTimeout(() => c.classList.remove("flash"), 220);
+      });
+    }
+
+    function updateDashboard() {
+      const n = state.requests;
+      const oal = safeAvg(state.optimized.latency, n);
+      const ual = safeAvg(state.unoptimized.latency, n);
+      const oat = safeAvg(state.optimized.tokens, n);
+      const uat = safeAvg(state.unoptimized.tokens, n);
+
+      document.getElementById("optCost").textContent = `$${state.optimized.cost.toFixed(4)}`;
+      document.getElementById("optLatency").textContent = `${oal.toFixed(0)} ms`;
+      document.getElementById("optTokens").textContent = `${oat.toFixed(0)}`;
+      document.getElementById("optCacheRate").textContent = `${pct(state.optimized.cacheHits, n).toFixed(1)}%`;
+      document.getElementById("optSmallCalls").textContent = `${state.optimized.smallCalls}`;
+      document.getElementById("optLargeCalls").textContent = `${state.optimized.largeCalls}`;
+
+      document.getElementById("unoptCost").textContent = `$${state.unoptimized.cost.toFixed(4)}`;
+      document.getElementById("unoptLatency").textContent = `${ual.toFixed(0)} ms`;
+      document.getElementById("unoptTokens").textContent = `${uat.toFixed(0)}`;
+      document.getElementById("unoptCacheRate").textContent = `${pct(state.unoptimized.cacheHits, n).toFixed(1)}%`;
+      document.getElementById("unoptSmallCalls").textContent = `${state.unoptimized.smallCalls}`;
+      document.getElementById("unoptLargeCalls").textContent = `${state.unoptimized.largeCalls}`;
+
+      const cs = state.unoptimized.cost > 0 ? ((state.unoptimized.cost - state.optimized.cost) / state.unoptimized.cost) * 100 : 0;
+      const ls = ual > 0 ? ((ual - oal) / ual) * 100 : 0;
+      const ts = uat > 0 ? ((uat - oat) / uat) * 100 : 0;
+
+      document.getElementById("costSavings").textContent = `${cs.toFixed(1)}%`;
+      document.getElementById("latencySavings").textContent = `${ls.toFixed(1)}%`;
+      document.getElementById("tokenSavings").textContent = `${ts.toFixed(1)}%`;
+
+      document.getElementById("costSavingsBar").style.width = `${Math.max(0, Math.min(cs, 100)).toFixed(1)}%`;
+      document.getElementById("latencySavingsBar").style.width = `${Math.max(0, Math.min(ls, 100)).toFixed(1)}%`;
+      document.getElementById("tokenSavingsBar").style.width = `${Math.max(0, Math.min(ts, 100)).toFixed(1)}%`;
+
+      flashCards("optCards");
+      flashCards("unoptCards");
+    }
+
+    function drawTokenChart() {
+      const canvas = document.getElementById("tokenChart");
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const w = canvas.width = Math.min(rect.width - 20, 600);
+      const h = canvas.height = 180;
+      const ctx = canvas.getContext("2d");
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#071024";
+      ctx.fillRect(0, 0, w, h);
+
+      ctx.strokeStyle = "rgba(143,167,214,0.15)";
+      ctx.lineWidth = 1;
+      for (let y = 25; y < h; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+      const opt = state.history.optimizedTokens;
+      const unopt = state.history.unoptimizedTokens;
+      if (opt.length < 2) {
+        ctx.fillStyle = "rgba(143,167,214,0.6)";
+        ctx.font = "12px Segoe UI";
+        ctx.fillText("Run simulation to view token growth trend", 14, 22);
+        return;
+      }
+
+      const maxVal = Math.max(...opt, ...unopt, 1);
+      const xStep = w / Math.max(opt.length - 1, 1);
+
+      function drawSeries(series, color) {
+        ctx.beginPath();
+        series.forEach((v, i) => { const x = i * xStep; const y = h - (v / maxVal) * (h - 20) - 10; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+        ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      }
+
+      drawSeries(unopt, "rgba(255,92,122,0.9)");
+      drawSeries(opt, "rgba(29,242,162,0.9)");
+
+      ctx.fillStyle = "#ff5c7a"; ctx.fillRect(10, 10, 10, 10);
+      ctx.fillStyle = "#1df2a2"; ctx.fillRect(140, 10, 10, 10);
+      ctx.fillStyle = "#dbe6ff"; ctx.font = "12px Segoe UI";
+      ctx.fillText("Unoptimized", 24, 20); ctx.fillText("Optimized", 154, 20);
+    }
+
+    function drawDonutChart() {
+      const canvas = document.getElementById("donutChart");
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const w = canvas.width = Math.min(rect.width - 20, 400);
+      const h = canvas.height = 180;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, w, h);
+
+      const qs = state.typeStats;
+      const segments = TYPE_LABELS.map(t => ({ label: t, value: qs[t].cost }));
+      const total = segments.reduce((s, x) => s + x.value, 0);
+
+      if (total <= 0) {
+        ctx.fillStyle = "rgba(143,167,214,0.6)"; ctx.font = "12px Segoe UI";
+        ctx.fillText("Cost data appears here", 14, 22);
+        return;
+      }
+
+      const cx = w * 0.38, cy = h / 2, r = Math.min(w * 0.32, h * 0.4), ir = r * 0.55;
+      let angle = -Math.PI / 2;
+      segments.forEach((seg, i) => {
+        if (seg.value <= 0) return;
+        const slice = (seg.value / total) * 2 * Math.PI;
+        ctx.beginPath();
+        ctx.arc(cx, cy, r, angle, angle + slice);
+        ctx.arc(cx, cy, ir, angle + slice, angle, true);
+        ctx.closePath();
+        ctx.fillStyle = TYPE_COLORS[i % TYPE_COLORS.length];
+        ctx.fill();
+        angle += slice;
+      });
+
+      ctx.fillStyle = "#dbe6ff"; ctx.font = "bold 13px Segoe UI"; ctx.textAlign = "center";
+      ctx.fillText(`$${total.toFixed(4)}`, cx, cy - 4);
+      ctx.fillStyle = "#8fa7d6"; ctx.font = "10px Segoe UI";
+      ctx.fillText("total cost", cx, cy + 10);
+
+      const lx = w * 0.72, ly = 25;
+      segments.forEach((seg, i) => {
+        const y = ly + i * 28;
+        if (y > h - 10) return;
+        ctx.fillStyle = TYPE_COLORS[i]; ctx.fillRect(lx, y, 10, 10);
+        ctx.fillStyle = "#dbe6ff"; ctx.font = "11px Segoe UI"; ctx.textAlign = "left";
+        const pp = total > 0 ? (seg.value / total) * 100 : 0;
+        ctx.fillText(`${seg.label} ${pp.toFixed(0)}%`, lx + 14, y + 9);
+      });
+    }
+
+    function drawTypeChart() {
+      const canvas = document.getElementById("typeChart");
+      const rect = canvas.parentElement.getBoundingClientRect();
+      const w = canvas.width = Math.min(rect.width - 20, 400);
+      const h = canvas.height = 180;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#071024"; ctx.fillRect(0, 0, w, h);
+
+      const qs = state.typeStats;
+      const maxCost = Math.max(0.0001, ...TYPE_LABELS.map(t => qs[t].cost));
+      const barW = Math.min(28, (w - 60) / TYPE_LABELS.length);
+
+      TYPE_LABELS.forEach((t, i) => {
+        const bh = qs[t].count > 0 ? (qs[t].cost / maxCost) * (h - 45) : 2;
+        const x = 30 + i * (barW + 18);
+        const y = h - 15 - bh;
+        ctx.fillStyle = TYPE_COLORS[i];
+        ctx.fillRect(x, y, barW, bh);
+        ctx.fillStyle = "#8fa7d6"; ctx.font = "9px Segoe UI"; ctx.textAlign = "center";
+        ctx.fillText(t === "operational_lookup" ? "op_lookup" : t, x + barW / 2, h - 3);
+        if (qs[t].count > 0) {
+          ctx.fillStyle = "#dbe6ff"; ctx.font = "9px Segoe UI";
+          ctx.fillText(`$${qs[t].cost.toFixed(4)}`, x + barW / 2, y - 4);
+        }
+      });
+
+      if (state.requests === 0) {
+        ctx.fillStyle = "rgba(143,167,214,0.6)"; ctx.font = "12px Segoe UI"; ctx.textAlign = "left";
+        ctx.fillText("Cost by type appears here", 14, 22);
+      }
+    }
+
+    function updateTypeBreakdown() {
+      const container = document.getElementById("typeBreakdown");
+      container.innerHTML = "";
+      TYPE_LABELS.forEach(t => {
+        const s = state.typeStats[t];
+        const avg = s.count > 0 ? s.cost / s.count : 0;
+        const div = document.createElement("div");
+        div.className = "type-stat";
+        div.innerHTML = `<span class="nm">${t}</span><br/><span class="cst">$${avg.toFixed(4)}</span> avg · ${s.count} req`;
+        container.appendChild(div);
+      });
+    }
+
+    function runBatch() {
+      const batchSize = Number(document.getElementById("batchSize").value);
+      for (let i = 0; i < batchSize; i++) simulateOneRequest();
+    }
+
+    function toggleAuto() {
+      const btn = document.getElementById("toggleAuto");
+      if (state.autoTimer) { clearInterval(state.autoTimer); state.autoTimer = null; btn.textContent = "Start Auto"; return; }
+      state.autoTimer = setInterval(simulateOneRequest, 280);
+      btn.textContent = "Stop Auto";
+    }
+
+    function resetState() {
+      if (state.autoTimer) { clearInterval(state.autoTimer); state.autoTimer = null; document.getElementById("toggleAuto").textContent = "Start Auto"; }
+      state.requests = 0;
+      state.optimized = { cost: 0, latency: 0, tokens: 0, cacheHits: 0, smallCalls: 0, largeCalls: 0 };
+      state.unoptimized = { cost: 0, latency: 0, tokens: 0, cacheHits: 0, smallCalls: 0, largeCalls: 0 };
+      state.history.optimizedTokens = [];
+      state.history.unoptimizedTokens = [];
+      state.logRows = [];
+      TYPE_LABELS.forEach(t => { state.typeStats[t] = { cost: 0, count: 0, latency: 0, tokens: 0 }; });
+      document.getElementById("logBody").innerHTML = "";
+      updateDashboard(); drawTokenChart(); drawDonutChart(); drawTypeChart(); updateTypeBreakdown();
+    }
+
+    document.getElementById("retrievalDepth").addEventListener("input", e => { document.getElementById("depthValue").textContent = e.target.value; });
+    document.getElementById("batchSize").addEventListener("input", e => { document.getElementById("batchValue").textContent = e.target.value; });
+    document.getElementById("toggleCaching").addEventListener("change", e => { document.getElementById("cachingState").textContent = e.target.checked ? "Enabled" : "Disabled"; });
+    document.getElementById("runOne").addEventListener("click", simulateOneRequest);
+    document.getElementById("runBatch").addEventListener("click", runBatch);
+    document.getElementById("toggleAuto").addEventListener("click", toggleAuto);
+    document.getElementById("resetAll").addEventListener("click", resetState);
+
+    updateDashboard(); drawTokenChart(); drawDonutChart(); drawTypeChart(); updateTypeBreakdown();
+  </script>
+</body>
+</html>
