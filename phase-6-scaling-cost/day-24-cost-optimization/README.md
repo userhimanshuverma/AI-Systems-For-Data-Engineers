@@ -13,6 +13,8 @@ Cost engineering is a design responsibility, not a finance afterthought. In prod
 
 If these are not controlled from day one, scaling users will scale cost faster than business value.
 
+**The Math of AI Scale:** A 10-step agent loop with a heavy model might cost $0.15 per request. At 10,000 Daily Active Users (DAU), that's $1,500/day or **$45,000/month**. Routing 80% of those routine requests to a smaller/cheaper model drops that bill to **$9,000/month**. Cost engineering is the difference between a profitable product and an unsustainable demo.
+
 ## Why AI systems fail financially before technically
 
 Many systems reach "acceptable quality" early but still fail in production due to unit economics:
@@ -117,6 +119,13 @@ Cache embeddings for repeated texts and templates.
 
 - useful in both ingestion and query-time flows
 
+### Native API Prompt Caching
+
+Modern API providers (Anthropic, OpenAI, Google) support caching large context blocks natively.
+
+- **How it works:** You send a large static prompt (like a codebase or long document) once, and subsequent requests reusing that prefix get a 50-80% discount and faster time-to-first-token.
+- **When to use:** Heavy system instructions, large few-shot examples, or static reference documents sent with every user message.
+
 ### Semantic cache concepts
 
 Cache by meaning, not just exact string:
@@ -128,7 +137,11 @@ Cache by meaning, not just exact string:
 
 ### Small vs large model routing
 
-Use smaller tiers for high-volume routine tasks (classification, extraction, FAQ). Reserve larger tiers for ambiguous, multi-step, or high-stakes reasoning.
+Use smaller API tiers for high-volume routine tasks (classification, extraction, FAQ). Reserve larger tiers for ambiguous, multi-step, or high-stakes reasoning.
+
+### Open-Source & SLM Routing
+
+For strict, repeatable tasks (like intent classification, basic entity extraction, or PII redaction), route requests to locally hosted Open-Source models (e.g., Llama 3 8B) or Small Language Models (SLMs). This drops the marginal cost of these frequent steps to near-zero (only compute).
 
 ### Complexity-aware routing
 
@@ -147,6 +160,15 @@ Orchestrators should enforce:
 - per-request cost ceilings,
 - per-workflow budget caps,
 - fallback behavior when projected cost exceeds policy.
+
+## Execution Strategies
+
+### Batch Processing APIs
+
+If a task does not have a strict real-time SLA (e.g., nightly summaries, bulk document classification, offline evaluations), use the Batch API endpoints offered by major providers.
+
+- **Impact:** Typically provides a 50% discount compared to synchronous API calls.
+- **Tradeoff:** Responses can take up to 24 hours (though often complete sooner).
 
 ## Cost vs Quality Tradeoffs
 
