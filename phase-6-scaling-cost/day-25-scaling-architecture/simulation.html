@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Day 25: Scaling Architecture Simulation</title>
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --panel-bg: #1e293b;
+            --text-light: #f8fafc;
+            --accent: #38bdf8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --agent-color: #a855f7;
+            --micro-color: #3b82f6;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 { margin-bottom: 5px; color: var(--accent); }
+        p.subtitle { color: #94a3b8; margin-bottom: 30px; }
+
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            width: 100%;
+            max-width: 1000px;
+        }
+
+        .panel {
+            background-color: var(--panel-bg);
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 { font-size: 1.2rem; margin-top: 0; border-bottom: 1px solid #334155; padding-bottom: 10px; }
+
+        .controls {
+            grid-column: span 2;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        input[type="range"] { width: 300px; cursor: pointer; }
+        
+        button {
+            background-color: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        button:hover { opacity: 0.9; }
+        button:disabled { background-color: #475569; cursor: not-allowed; }
+
+        .metric { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .metric-val { font-family: monospace; font-size: 1.1em; color: var(--accent); }
+
+        .architecture-box {
+            position: relative;
+            height: 150px;
+            background: #0f172a;
+            border-radius: 8px;
+            margin-top: 20px;
+            overflow: hidden;
+            border: 1px solid #334155;
+        }
+
+        .node {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 0.8rem;
+            color: white;
+            transition: all 0.2s;
+        }
+
+        .monolith { background-color: #64748b; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 100px; height: 100px; }
+        .micro { background-color: var(--micro-color); }
+        .agent { background-color: var(--agent-color); border-radius: 50%; }
+        
+        .request-dot {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            background-color: var(--success);
+            border-radius: 50%;
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        /* Node positioning */
+        .u1 { left: 20px; top: 50px; }
+        .m1 { left: 80px; top: 20px; }
+        .m2 { left: 80px; top: 80px; }
+        .m3 { right: 20px; top: 50px; }
+        
+        .a1 { left: 50%; top: 20px; transform: translateX(-50%); }
+        .a2 { left: 40px; top: 80px; }
+        .a3 { right: 40px; top: 80px; }
+
+    </style>
+</head>
+<body>
+
+    <h1>Architectural Scalability Simulation</h1>
+    <p class="subtitle">AI Systems for Data Engineers — Day 25</p>
+
+    <div class="dashboard">
+        
+        <div class="panel controls">
+            <div>
+                <label>Traffic Load: <span id="loadVal" style="color:var(--accent); font-weight:bold;">Low (10 req/s)</span></label><br>
+                <input type="range" id="loadSlider" min="1" max="100" value="10">
+            </div>
+            <button id="simBtn" onclick="runSimulation()">Run Stress Test</button>
+        </div>
+
+        <!-- Monolith -->
+        <div class="panel">
+            <h2>Monolithic AI</h2>
+            <div class="metric"><span>Latency:</span> <span class="metric-val" id="lat-mono">0 ms</span></div>
+            <div class="metric"><span>Status:</span> <span class="metric-val" id="stat-mono" style="color:var(--success);">Stable</span></div>
+            <div class="architecture-box" id="box-mono">
+                <div class="node monolith">Monolith</div>
+            </div>
+        </div>
+
+        <!-- Microservices -->
+        <div class="panel">
+            <h2>Microservices</h2>
+            <div class="metric"><span>Latency:</span> <span class="metric-val" id="lat-micro">0 ms</span></div>
+            <div class="metric"><span>Status:</span> <span class="metric-val" id="stat-micro" style="color:var(--success);">Stable</span></div>
+            <div class="architecture-box" id="box-micro">
+                <div class="node micro u1">API</div>
+                <div class="node micro m1">Ret</div>
+                <div class="node micro m2">DB</div>
+                <div class="node micro m3">Gen</div>
+            </div>
+        </div>
+
+        <!-- Multi-Agent -->
+        <div class="panel">
+            <h2>Multi-Agent System</h2>
+            <div class="metric"><span>Latency:</span> <span class="metric-val" id="lat-agent">0 ms</span></div>
+            <div class="metric"><span>Status:</span> <span class="metric-val" id="stat-agent" style="color:var(--success);">Stable</span></div>
+            <div class="architecture-box" id="box-agent">
+                <div class="node agent a1">Coord</div>
+                <div class="node agent a2">Rsch</div>
+                <div class="node agent a3">Anal</div>
+            </div>
+        </div>
+
+        <!-- Hybrid -->
+        <div class="panel">
+            <h2>Hybrid Architecture</h2>
+            <div class="metric"><span>Latency:</span> <span class="metric-val" id="lat-hybrid">0 ms</span></div>
+            <div class="metric"><span>Status:</span> <span class="metric-val" id="stat-hybrid" style="color:var(--success);">Stable</span></div>
+            <div class="architecture-box" id="box-hybrid">
+                <div class="node agent a1">Agent</div>
+                <div class="node micro u1">API</div>
+                <div class="node micro m2" style="left:70px; top:90px;">SVC</div>
+                <div class="node micro m3" style="right:70px; top:90px;">SVC</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const slider = document.getElementById('loadSlider');
+        const loadVal = document.getElementById('loadVal');
+        
+        slider.addEventListener('input', (e) => {
+            const val = e.target.value;
+            let label = "Low";
+            if(val > 40) label = "Medium";
+            if(val > 75) label = "High";
+            loadVal.innerText = `${label} (${val} req/s)`;
+        });
+
+        function animateDots(boxId, count, color, durationMs) {
+            const box = document.getElementById(boxId);
+            for(let i=0; i<count; i++) {
+                setTimeout(() => {
+                    const dot = document.createElement('div');
+                    dot.className = 'request-dot';
+                    dot.style.backgroundColor = color;
+                    
+                    // random start and end positions inside box
+                    const startX = Math.random() * 20;
+                    const startY = Math.random() * 100;
+                    const endX = 200 + Math.random() * 50;
+                    const endY = Math.random() * 100;
+                    
+                    dot.style.left = startX + 'px';
+                    dot.style.top = startY + 'px';
+                    dot.style.opacity = '1';
+                    dot.style.transition = `all ${durationMs/1000}s linear`;
+                    
+                    box.appendChild(dot);
+                    
+                    // trigger animation
+                    setTimeout(() => {
+                        dot.style.left = endX + 'px';
+                        dot.style.top = endY + 'px';
+                    }, 50);
+                    
+                    // cleanup
+                    setTimeout(() => {
+                        if(box.contains(dot)) box.removeChild(dot);
+                    }, durationMs + 100);
+                    
+                }, Math.random() * 2000);
+            }
+        }
+
+        async function runSimulation() {
+            const load = parseInt(slider.value);
+            document.getElementById('simBtn').disabled = true;
+            
+            const models = [
+                { id: 'mono', baseLat: 300, factor: 4.5, limit: 70 },     // Fails under high load quickly
+                { id: 'micro', baseLat: 150, factor: 0.5, limit: 200 },    // Scales well
+                { id: 'agent', baseLat: 600, factor: 6.0, limit: 50 },     // High coordination overhead
+                { id: 'hybrid', baseLat: 400, factor: 1.2, limit: 150 }    // Balanced
+            ];
+
+            // Reset statuses
+            models.forEach(m => {
+                document.getElementById(`stat-${m.id}`).innerText = "Processing...";
+                document.getElementById(`stat-${m.id}`).style.color = "var(--warning)";
+                document.getElementById(`lat-${m.id}`).innerText = "0 ms";
+            });
+
+            // Simulate and animate
+            for(const model of models) {
+                let currentLat = model.baseLat + (load * model.factor);
+                let status = "Stable";
+                let statusColor = "var(--success)";
+                let dotColor = "var(--success)";
+                
+                if (load > model.limit) {
+                    status = "Failed / Throttled";
+                    statusColor = "var(--danger)";
+                    dotColor = "var(--danger)";
+                    currentLat = currentLat * 2.5; // Cascading failure latency
+                } else if (load > model.limit * 0.7) {
+                    status = "Struggling";
+                    statusColor = "var(--warning)";
+                    dotColor = "var(--warning)";
+                }
+
+                animateDots(`box-${model.id}`, Math.min(load, 50), dotColor, Math.min(currentLat, 2000));
+
+                // Counter animation for text
+                let counter = 0;
+                const interval = setInterval(() => {
+                    counter += (currentLat / 20);
+                    if(counter >= currentLat) {
+                        clearInterval(interval);
+                        document.getElementById(`lat-${model.id}`).innerText = `${Math.floor(currentLat)} ms`;
+                        document.getElementById(`stat-${model.id}`).innerText = status;
+                        document.getElementById(`stat-${model.id}`).style.color = statusColor;
+                    } else {
+                        document.getElementById(`lat-${model.id}`).innerText = `${Math.floor(counter)} ms`;
+                    }
+                }, 50);
+            }
+
+            setTimeout(() => {
+                document.getElementById('simBtn').disabled = false;
+            }, 2500);
+        }
+    </script>
+</body>
+</html>
