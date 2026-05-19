@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI System Latency Simulator</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: #1e293b;
+            --text-color: #e2e8f0;
+            --accent: #38bdf8;
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --border: #334155;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .container {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            max-width: 1200px;
+        }
+
+        .controls, .simulation-area {
+            background: var(--panel-bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .controls {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .simulation-area {
+            flex: 2;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        label {
+            font-size: 0.9em;
+            color: #94a3b8;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--accent);
+        }
+
+        .value-display {
+            font-weight: bold;
+            color: var(--accent);
+        }
+
+        button {
+            background: var(--accent);
+            color: #0f172a;
+            border: none;
+            padding: 10px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #0ea5e9;
+            transform: scale(1.02);
+        }
+
+        .system-panel {
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 15px;
+            background: rgba(15, 23, 42, 0.5);
+        }
+
+        .system-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 0.9em;
+        }
+
+        .metric-val {
+            font-family: monospace;
+            font-weight: bold;
+        }
+
+        .progress-container {
+            width: 100%;
+            background-color: var(--border);
+            border-radius: 4px;
+            height: 10px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: var(--success);
+            transition: width 0.1s linear;
+        }
+
+        .log-area {
+            background: #000;
+            color: #10b981;
+            font-family: monospace;
+            padding: 10px;
+            border-radius: 4px;
+            height: 150px;
+            overflow-y: auto;
+            font-size: 0.85em;
+            margin-top: 10px;
+        }
+
+        .log-entry {
+            margin-bottom: 4px;
+        }
+
+        .badge {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        .b-danger { background: var(--danger); color: white; }
+        .b-success { background: var(--success); color: white; }
+        .b-warning { background: var(--warning); color: #000; }
+        .b-accent { background: var(--accent); color: #000; }
+
+        .comparison {
+            display: flex;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .comparison > div {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>AI System Latency Simulator</h1>
+
+    <div class="container">
+        <!-- Controls Panel -->
+        <div class="controls">
+            <h3>System Parameters</h3>
+            
+            <div class="control-group">
+                <label>Retrieval Depth (Documents) <span class="value-display" id="val-depth">50</span></label>
+                <input type="range" id="param-depth" min="5" max="200" value="50">
+            </div>
+
+            <div class="control-group">
+                <label>Cache Hit Rate (%) <span class="value-display" id="val-cache">20</span></label>
+                <input type="range" id="param-cache" min="0" max="100" value="20">
+            </div>
+
+            <div class="control-group">
+                <label>Model Size (Billion Params) <span class="value-display" id="val-size">70</span></label>
+                <input type="range" id="param-size" min="8" max="400" value="70" step="2">
+            </div>
+
+            <div class="control-group">
+                <label>Concurrency (Parallel Tasks) <span class="value-display" id="val-concurrency">1</span></label>
+                <input type="range" id="param-concurrency" min="1" max="10" value="1">
+            </div>
+
+            <button onclick="runSimulation()">Run Simulation</button>
+        </div>
+
+        <!-- Simulation Area -->
+        <div class="simulation-area">
+            <div class="comparison">
+                <!-- Unoptimized System -->
+                <div class="system-panel" id="sys-unopt">
+                    <div class="system-title">
+                        <span>Unoptimized System</span>
+                        <span class="badge b-danger">Sequential</span>
+                    </div>
+                    <div class="metric"><span>Latency:</span> <span class="metric-val" id="time-unopt">0 ms</span></div>
+                    <div class="metric"><span>Quality Score:</span> <span class="metric-val" id="qual-unopt">0/100</span></div>
+                    <div class="metric"><span>Throughput:</span> <span class="metric-val" id="tpt-unopt">0 req/s</span></div>
+                    
+                    <div class="progress-container">
+                        <div class="progress-bar" id="prog-unopt"></div>
+                    </div>
+                    <div class="log-area" id="log-unopt"></div>
+                </div>
+
+                <!-- Optimized System -->
+                <div class="system-panel" id="sys-opt">
+                    <div class="system-title">
+                        <span>Optimized System</span>
+                        <span class="badge b-success">Parallel + Router</span>
+                    </div>
+                    <div class="metric"><span>Latency:</span> <span class="metric-val" id="time-opt">0 ms</span></div>
+                    <div class="metric"><span>Quality Score:</span> <span class="metric-val" id="qual-opt">0/100</span></div>
+                    <div class="metric"><span>Throughput:</span> <span class="metric-val" id="tpt-opt">0 req/s</span></div>
+                    
+                    <div class="progress-container">
+                        <div class="progress-bar" id="prog-opt"></div>
+                    </div>
+                    <div class="log-area" id="log-opt"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Update labels on range changes
+        document.querySelectorAll('input[type="range"]').forEach(input => {
+            input.addEventListener('input', function() {
+                document.getElementById('val-' + this.id.split('-')[1]).innerText = this.value;
+            });
+        });
+
+        function log(target, msg, color="#10b981") {
+            const el = document.getElementById(target);
+            el.innerHTML += `<div class="log-entry" style="color: ${color}">> ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function sleep(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        async function animateProgress(target, duration) {
+            const el = document.getElementById(target);
+            el.style.width = '0%';
+            el.style.transition = `width ${duration}ms linear`;
+            // Trigger reflow
+            void el.offsetWidth;
+            el.style.width = '100%';
+            await sleep(duration);
+        }
+
+        async function runSimulation() {
+            // Reset UI
+            document.getElementById('prog-unopt').style.width = '0%';
+            document.getElementById('prog-opt').style.width = '0%';
+            document.getElementById('log-unopt').innerHTML = '';
+            document.getElementById('log-opt').innerHTML = '';
+            document.querySelectorAll('.metric-val').forEach(el => el.innerText = '...');
+
+            const depth = parseInt(document.getElementById('param-depth').value);
+            const cacheRate = parseInt(document.getElementById('param-cache').value);
+            const modelSize = parseInt(document.getElementById('param-size').value);
+            const concurrency = parseInt(document.getElementById('param-concurrency').value);
+
+            // Simulation Logic Base Metrics
+            const baseRetrievalTimeMs = depth * 5; // 5ms per doc
+            const baseInferenceTimeMs = modelSize * 15; // 15ms per billion param
+
+            // Run Unoptimized
+            runUnoptimized(baseRetrievalTimeMs, baseInferenceTimeMs, depth, modelSize);
+            
+            // Run Optimized
+            runOptimized(baseRetrievalTimeMs, baseInferenceTimeMs, depth, cacheRate, concurrency, modelSize);
+        }
+
+        async function runUnoptimized(retrievalTime, inferenceTime, depth, modelSize) {
+            const totalTime = retrievalTime * 3 + inferenceTime; // Sequential: DB + Vector + Web + Inference
+            const uiWait = Math.min(totalTime / 5, 3000); // Scale down for UI
+            
+            log('log-unopt', 'Starting Sequential Workflow...', '#94a3b8');
+            
+            const p1 = animateProgress('prog-unopt', uiWait);
+            
+            log('log-unopt', `[1] Querying DB (${retrievalTime}ms)`);
+            await sleep(uiWait * 0.25);
+            log('log-unopt', `[2] Querying Vector DB (${retrievalTime}ms)`);
+            await sleep(uiWait * 0.25);
+            log('log-unopt', `[3] Querying Web API (${retrievalTime}ms)`);
+            await sleep(uiWait * 0.25);
+            log('log-unopt', `[4] Model Inference [${modelSize}B] (${inferenceTime}ms)`);
+            
+            await p1;
+            
+            log('log-unopt', 'Workflow Complete.', '#22c55e');
+
+            const quality = Math.min(100, 50 + (depth * 0.2) + (modelSize * 0.1));
+            
+            document.getElementById('time-unopt').innerText = `${totalTime} ms`;
+            document.getElementById('qual-unopt').innerText = `${quality.toFixed(1)} / 100`;
+            document.getElementById('tpt-unopt').innerText = `${(1000 / totalTime).toFixed(2)} req/s`;
+        }
+
+        async function runOptimized(retrievalTime, inferenceTime, depth, cacheRate, concurrency, modelSize) {
+            const isCacheHit = Math.random() * 100 < cacheRate;
+            
+            let totalTime = 0;
+            let quality = 0;
+            let uiWait = 0;
+
+            log('log-opt', 'Starting Optimized Workflow...', '#94a3b8');
+
+            if (isCacheHit) {
+                totalTime = 50; // 50ms cache retrieval
+                quality = Math.min(100, 50 + (depth * 0.2) + (modelSize * 0.1)); // Same quality as full run
+                uiWait = 500;
+                
+                const p1 = animateProgress('prog-opt', uiWait);
+                log('log-opt', '⚡ Semantic Cache HIT (50ms)', '#38bdf8');
+                await p1;
+            } else {
+                // Parallel retrieval
+                const parallelRetrievalTime = retrievalTime / Math.min(3, concurrency); // Bound max parallelism improvement
+                
+                // Model Router
+                const useFastModel = Math.random() > 0.5; // 50% chance query is simple
+                const actualInferenceTime = useFastModel ? 8 * 15 : inferenceTime; // 8B model is fast
+                const actualModelSize = useFastModel ? 8 : modelSize;
+
+                totalTime = 20 + parallelRetrievalTime + 50 + actualInferenceTime; // Router overhead + retrieval + rerank + inference
+                uiWait = Math.min(totalTime / 5, 2000);
+
+                const p1 = animateProgress('prog-opt', uiWait);
+                
+                log('log-opt', `[1] Router classifies task (20ms)`);
+                await sleep(uiWait * 0.2);
+                
+                log('log-opt', `[2] Concurrent Fetch [DB, Vector, Web] (${parallelRetrievalTime.toFixed(0)}ms)`);
+                await sleep(uiWait * 0.3);
+                
+                log('log-opt', `[3] Context Reranker limits context (50ms)`);
+                await sleep(uiWait * 0.2);
+                
+                const mColor = useFastModel ? '#22c55e' : '#f59e0b';
+                log('log-opt', `[4] Routed to [${actualModelSize}B] Model (${actualInferenceTime.toFixed(0)}ms)`, mColor);
+                
+                await p1;
+
+                // Quality is slightly impacted if routed to small model on complex task, but we simulate generally good routing
+                quality = useFastModel ? Math.min(100, 50 + (depth * 0.2) + (8 * 0.1)) + 15 : Math.min(100, 50 + (depth * 0.2) + (modelSize * 0.1));
+            }
+
+            log('log-opt', 'Workflow Complete.', '#22c55e');
+
+            document.getElementById('time-opt').innerText = `${totalTime.toFixed(0)} ms`;
+            document.getElementById('qual-opt').innerText = `${quality.toFixed(1)} / 100`;
+            document.getElementById('tpt-opt').innerText = `${(1000 / totalTime).toFixed(2)} req/s`;
+        }
+    </script>
+</body>
+</html>
