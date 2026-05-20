@@ -1,0 +1,1572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Day 27 — End-to-End AI System Architecture Simulation</title>
+    <meta name="description" content="Interactive visualization of a production AI system architecture: Kafka → Stream Processing → Retrieval → Orchestration → LLM → Response">
+    <style>
+        :root {
+            --bg-primary: #0a0e1a;
+            --bg-secondary: #111827;
+            --bg-card: #1a1f36;
+            --bg-card-hover: #222845;
+            --border: #2a3050;
+            --border-active: #4f6df5;
+            --text-primary: #e2e8f0;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-pink: #ec4899;
+            --glow-blue: rgba(59, 130, 246, 0.15);
+            --glow-purple: rgba(139, 92, 246, 0.15);
+            --glow-green: rgba(16, 185, 129, 0.15);
+            --glow-red: rgba(239, 68, 68, 0.15);
+            --font-mono: 'Courier New', monospace;
+            --font-sans: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            --radius: 12px;
+            --radius-sm: 8px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Header ───────────────────────────────────────────── */
+        .header {
+            background: linear-gradient(135deg, #0f1629 0%, #1a1040 50%, #0f1629 100%);
+            border-bottom: 1px solid var(--border);
+            padding: 24px 32px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+
+        .header-inner {
+            max-width: 1600px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.3px;
+        }
+
+        .header-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .header-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse-dot 2s ease-in-out infinite;
+        }
+
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            50% { opacity: 0.8; box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+        }
+
+        /* ── Main Layout ──────────────────────────────────────── */
+        .main {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px 32px;
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            grid-template-rows: auto auto 1fr;
+            gap: 20px;
+        }
+
+        /* ── Architecture Flow ────────────────────────────────── */
+        .arch-flow {
+            grid-column: 1 / -1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            overflow-x: auto;
+        }
+
+        .arch-flow-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+        }
+
+        .pipeline-stages {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            min-width: max-content;
+        }
+
+        .stage-node {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            min-width: 130px;
+            padding: 16px 12px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-secondary);
+            transition: all 0.4s ease;
+            cursor: default;
+            position: relative;
+        }
+
+        .stage-node.active {
+            border-color: var(--accent-blue);
+            background: rgba(59, 130, 246, 0.08);
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.15);
+        }
+
+        .stage-node.completed {
+            border-color: var(--accent-green);
+            background: rgba(16, 185, 129, 0.06);
+        }
+
+        .stage-node.error {
+            border-color: var(--accent-red);
+            background: rgba(239, 68, 68, 0.06);
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-4px); }
+            75% { transform: translateX(4px); }
+        }
+
+        .stage-icon {
+            font-size: 24px;
+            line-height: 1;
+        }
+
+        .stage-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-primary);
+            text-align: center;
+        }
+
+        .stage-sublabel {
+            font-size: 10px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .stage-latency {
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: var(--accent-cyan);
+            background: rgba(6, 182, 212, 0.1);
+            padding: 2px 8px;
+            border-radius: 10px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .stage-node.completed .stage-latency,
+        .stage-node.active .stage-latency {
+            opacity: 1;
+        }
+
+        .stage-arrow {
+            font-size: 18px;
+            color: var(--text-muted);
+            min-width: 24px;
+            text-align: center;
+            transition: color 0.3s;
+        }
+
+        .stage-arrow.active {
+            color: var(--accent-blue);
+        }
+
+        /* ── Query Panel ──────────────────────────────────────── */
+        .query-panel {
+            grid-column: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+        }
+
+        .panel-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .query-input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .query-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: var(--font-sans);
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .query-input:focus {
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px var(--glow-blue);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-family: var(--font-sans);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent-blue);
+            background: var(--bg-card-hover);
+        }
+
+        .preset-queries {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .preset-btn {
+            padding: 6px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .preset-btn:hover {
+            border-color: var(--accent-purple);
+            color: var(--text-primary);
+            background: rgba(139, 92, 246, 0.08);
+        }
+
+        /* ── Metrics Sidebar ──────────────────────────────────── */
+        .metrics-sidebar {
+            grid-column: 2;
+            grid-row: 2 / 4;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+        }
+
+        .metric-card-title {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 12px;
+        }
+
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(42, 48, 80, 0.5);
+        }
+
+        .metric-row:last-child { border-bottom: none; }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .metric-value {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: var(--font-mono);
+        }
+
+        .metric-value.green { color: var(--accent-green); }
+        .metric-value.blue { color: var(--accent-blue); }
+        .metric-value.orange { color: var(--accent-orange); }
+        .metric-value.red { color: var(--accent-red); }
+        .metric-value.purple { color: var(--accent-purple); }
+        .metric-value.cyan { color: var(--accent-cyan); }
+
+        .metric-big {
+            font-size: 28px;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            margin-bottom: 4px;
+        }
+
+        .metric-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+
+        /* ── Circuit Breakers ─────────────────────────────────── */
+        .circuit-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .circuit-item {
+            padding: 8px 10px;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+        }
+
+        .circuit-name {
+            font-size: 10px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .circuit-state {
+            font-size: 11px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .circuit-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+
+        .circuit-dot.closed { background: var(--accent-green); }
+        .circuit-dot.open { background: var(--accent-red); }
+        .circuit-dot.half-open { background: var(--accent-orange); }
+
+        /* ── Response Panel ───────────────────────────────────── */
+        .response-panel {
+            grid-column: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .response-content {
+            flex: 1;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-sm);
+            padding: 20px;
+            margin-top: 12px;
+            font-size: 13px;
+            line-height: 1.7;
+            white-space: pre-wrap;
+            overflow-y: auto;
+            max-height: 500px;
+            border: 1px solid var(--border);
+        }
+
+        .response-content .typing-cursor {
+            display: inline-block;
+            width: 2px;
+            height: 16px;
+            background: var(--accent-blue);
+            animation: blink 1s step-end infinite;
+            vertical-align: text-bottom;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* ── Trace Log ────────────────────────────────────────── */
+        .trace-log {
+            margin-top: 16px;
+        }
+
+        .trace-entry {
+            display: flex;
+            gap: 10px;
+            padding: 8px 12px;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            border-left: 3px solid var(--border);
+            margin-bottom: 4px;
+            background: rgba(17, 24, 39, 0.5);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            animation: traceIn 0.3s ease;
+        }
+
+        @keyframes traceIn {
+            from { opacity: 0; transform: translateX(-10px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        .trace-entry.success { border-left-color: var(--accent-green); }
+        .trace-entry.running { border-left-color: var(--accent-blue); }
+        .trace-entry.error { border-left-color: var(--accent-red); }
+        .trace-entry.fallback { border-left-color: var(--accent-orange); }
+
+        .trace-time {
+            color: var(--text-muted);
+            min-width: 70px;
+        }
+
+        .trace-stage {
+            color: var(--accent-cyan);
+            min-width: 160px;
+        }
+
+        .trace-msg {
+            color: var(--text-secondary);
+            flex: 1;
+        }
+
+        /* ── Data Ingestion Panel ─────────────────────────────── */
+        .ingestion-panel {
+            grid-column: 1 / -1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+        }
+
+        .ingestion-controls {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .event-stream {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            max-height: 80px;
+            overflow: hidden;
+        }
+
+        .event-pill {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            font-weight: 600;
+            animation: pillIn 0.3s ease;
+            border: 1px solid;
+        }
+
+        @keyframes pillIn {
+            from { opacity: 0; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .event-pill.page_view { background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.3); color: var(--accent-blue); }
+        .event-pill.feature_used { background: rgba(139, 92, 246, 0.12); border-color: rgba(139, 92, 246, 0.3); color: var(--accent-purple); }
+        .event-pill.subscription_event { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.3); color: var(--accent-green); }
+        .event-pill.support_ticket { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3); color: var(--accent-red); }
+        .event-pill.api_call { background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.3); color: var(--accent-cyan); }
+
+        /* ── Latency Bars ─────────────────────────────────────── */
+        .latency-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .latency-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .latency-bar-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            min-width: 120px;
+        }
+
+        .latency-bar-track {
+            flex: 1;
+            height: 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .latency-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .latency-bar-value {
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: var(--text-muted);
+            min-width: 60px;
+            text-align: right;
+        }
+
+        /* ── Waterfall ────────────────────────────────────────── */
+        .waterfall-container {
+            margin-top: 16px;
+        }
+
+        .waterfall-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 4px 0;
+        }
+
+        .waterfall-label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            min-width: 120px;
+        }
+
+        .waterfall-track {
+            flex: 1;
+            height: 20px;
+            position: relative;
+            background: rgba(17, 24, 39, 0.3);
+            border-radius: 4px;
+        }
+
+        .waterfall-bar {
+            position: absolute;
+            height: 100%;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            font-size: 10px;
+            font-family: var(--font-mono);
+            color: white;
+            transition: all 0.5s ease;
+            min-width: 30px;
+        }
+
+        /* ── Responsive ───────────────────────────────────────── */
+        @media (max-width: 1200px) {
+            .main {
+                grid-template-columns: 1fr;
+                padding: 16px;
+            }
+            .metrics-sidebar { grid-column: 1; grid-row: auto; }
+            .ingestion-panel { grid-column: 1; }
+        }
+
+        /* ── Animations ───────────────────────────────────────── */
+        .fade-in {
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .progress-ring {
+            width: 40px;
+            height: 40px;
+        }
+
+        .progress-ring circle {
+            fill: none;
+            stroke-width: 3;
+        }
+
+        .progress-ring .bg { stroke: var(--border); }
+        .progress-ring .fg {
+            stroke: var(--accent-blue);
+            stroke-linecap: round;
+            transform: rotate(-90deg);
+            transform-origin: center;
+            transition: stroke-dashoffset 0.5s ease;
+        }
+
+        /* ── Empty State ──────────────────────────────────────── */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 200px;
+            color: var(--text-muted);
+            gap: 12px;
+        }
+
+        .empty-state-icon { font-size: 40px; opacity: 0.4; }
+        .empty-state-text { font-size: 13px; }
+    </style>
+</head>
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="header-inner">
+            <div>
+                <h1>⚡ End-to-End AI System Architecture</h1>
+                <div class="header-subtitle">Day 27 — Production AI Pipeline Simulation</div>
+            </div>
+            <div class="header-controls">
+                <div class="status-badge">
+                    <div class="status-dot"></div>
+                    <span id="system-status">System Online</span>
+                </div>
+                <div class="status-badge" style="color: var(--accent-cyan);">
+                    <span>Queries: </span>
+                    <span id="total-queries-badge">0</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="main">
+
+        <!-- Architecture Flow -->
+        <div class="arch-flow">
+            <div class="arch-flow-title">🔄 Pipeline Execution Flow</div>
+            <div class="pipeline-stages" id="pipeline-stages">
+                <div class="stage-node" id="stage-kafka" data-stage="kafka">
+                    <div class="stage-icon">📨</div>
+                    <div class="stage-label">Kafka</div>
+                    <div class="stage-sublabel">Ingestion</div>
+                    <div class="stage-latency" id="lat-kafka">—</div>
+                </div>
+                <div class="stage-arrow" id="arrow-0">→</div>
+                <div class="stage-node" id="stage-stream" data-stage="stream">
+                    <div class="stage-icon">⚡</div>
+                    <div class="stage-label">Stream Proc</div>
+                    <div class="stage-sublabel">Enrichment</div>
+                    <div class="stage-latency" id="lat-stream">—</div>
+                </div>
+                <div class="stage-arrow" id="arrow-1">→</div>
+                <div class="stage-node" id="stage-query" data-stage="query">
+                    <div class="stage-icon">🎯</div>
+                    <div class="stage-label">Query</div>
+                    <div class="stage-sublabel">Understanding</div>
+                    <div class="stage-latency" id="lat-query">—</div>
+                </div>
+                <div class="stage-arrow" id="arrow-2">→</div>
+                <div class="stage-node" id="stage-retrieval" data-stage="retrieval">
+                    <div class="stage-icon">🔎</div>
+                    <div class="stage-label">Retrieval</div>
+                    <div class="stage-sublabel">Pinot + Vector</div>
+                    <div class="stage-latency" id="lat-retrieval">—</div>
+                </div>
+                <div class="stage-arrow" id="arrow-3">→</div>
+                <div class="stage-node" id="stage-agent" data-stage="agent">
+                    <div class="stage-icon">🤖</div>
+                    <div class="stage-label">Agent</div>
+                    <div class="stage-sublabel">Orchestration</div>
+                    <div class="stage-latency" id="lat-agent">—</div>
+                </div>
+                <div class="stage-arrow" id="arrow-4">→</div>
+                <div class="stage-node" id="stage-llm" data-stage="llm">
+                    <div class="stage-icon">🧠</div>
+                    <div class="stage-label">LLM</div>
+                    <div class="stage-sublabel">Reasoning</div>
+                    <div class="stage-latency" id="lat-llm">—</div>
+                </div>
+                <div class="stage-arrow" id="arrow-5">→</div>
+                <div class="stage-node" id="stage-response" data-stage="response">
+                    <div class="stage-icon">📤</div>
+                    <div class="stage-label">Response</div>
+                    <div class="stage-sublabel">Delivery</div>
+                    <div class="stage-latency" id="lat-response">—</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Query Panel -->
+        <div class="query-panel">
+            <div class="panel-title">🔍 Query Interface</div>
+            <div class="query-input-row">
+                <input type="text" class="query-input" id="query-input"
+                       placeholder="Enter a natural language query..."
+                       value="Which enterprise users are at highest risk of churning?" />
+                <button class="btn btn-primary" id="run-btn" onclick="runQuery()">
+                    ▶ Run Query
+                </button>
+            </div>
+            <div class="preset-queries">
+                <button class="preset-btn" onclick="setQuery('Which enterprise users are at highest risk of churning?')">Churn Risk</button>
+                <button class="preset-btn" onclick="setQuery('Show users with similar behavior to user_0042')">Similar Users</button>
+                <button class="preset-btn" onclick="setQuery('What is the revenue trend for professional tier?')">Revenue Trend</button>
+                <button class="preset-btn" onclick="setQuery('Find users with high support volume and declining engagement')">Support Analysis</button>
+                <button class="preset-btn" onclick="setQuery('Quick health overview for our top enterprise accounts')">Health Check</button>
+            </div>
+
+            <!-- Trace Log -->
+            <div class="panel-title" style="margin-top: 20px;">📡 Execution Trace</div>
+            <div class="trace-log" id="trace-log">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🔍</div>
+                    <div class="empty-state-text">Run a query to see the execution trace</div>
+                </div>
+            </div>
+
+            <!-- Waterfall -->
+            <div class="panel-title" style="margin-top: 20px;">⏱ Latency Waterfall</div>
+            <div class="waterfall-container" id="waterfall">
+                <div class="empty-state" style="min-height: 100px;">
+                    <div class="empty-state-text" style="color: var(--text-muted);">Waiting for query execution...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metrics Sidebar -->
+        <div class="metrics-sidebar">
+
+            <!-- Latency Metrics -->
+            <div class="metric-card">
+                <div class="metric-card-title">⏱ Query Latency</div>
+                <div class="metric-big cyan" id="total-latency">—</div>
+                <div class="metric-sub">Total End-to-End</div>
+                <div style="margin-top: 12px;">
+                    <div class="metric-row">
+                        <span class="metric-label">P50</span>
+                        <span class="metric-value cyan" id="p50">—</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">P95</span>
+                        <span class="metric-value orange" id="p95">—</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">P99</span>
+                        <span class="metric-value red" id="p99">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Throughput -->
+            <div class="metric-card">
+                <div class="metric-card-title">📊 Throughput</div>
+                <div class="metric-row">
+                    <span class="metric-label">Total Queries</span>
+                    <span class="metric-value blue" id="total-queries">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Events Ingested</span>
+                    <span class="metric-value green" id="events-ingested">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Events Processed</span>
+                    <span class="metric-value green" id="events-processed">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Cache Hits</span>
+                    <span class="metric-value purple" id="cache-hits">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Cache Hit Rate</span>
+                    <span class="metric-value purple" id="cache-rate">0%</span>
+                </div>
+            </div>
+
+            <!-- Reliability -->
+            <div class="metric-card">
+                <div class="metric-card-title">🛡 Reliability</div>
+                <div class="metric-row">
+                    <span class="metric-label">Success Rate</span>
+                    <span class="metric-value green" id="success-rate">100%</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Total Retries</span>
+                    <span class="metric-value orange" id="total-retries">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Fallbacks Used</span>
+                    <span class="metric-value orange" id="total-fallbacks">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Errors</span>
+                    <span class="metric-value red" id="total-errors">0</span>
+                </div>
+            </div>
+
+            <!-- Circuit Breakers -->
+            <div class="metric-card">
+                <div class="metric-card-title">⚡ Circuit Breakers</div>
+                <div class="circuit-grid" id="circuit-grid">
+                    <div class="circuit-item">
+                        <div class="circuit-name">Structured</div>
+                        <div class="circuit-state"><div class="circuit-dot closed"></div> Closed</div>
+                    </div>
+                    <div class="circuit-item">
+                        <div class="circuit-name">Semantic</div>
+                        <div class="circuit-state"><div class="circuit-dot closed"></div> Closed</div>
+                    </div>
+                    <div class="circuit-item">
+                        <div class="circuit-name">Features</div>
+                        <div class="circuit-state"><div class="circuit-dot closed"></div> Closed</div>
+                    </div>
+                    <div class="circuit-item">
+                        <div class="circuit-name">LLM</div>
+                        <div class="circuit-state"><div class="circuit-dot closed"></div> Closed</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cost -->
+            <div class="metric-card">
+                <div class="metric-card-title">💰 Cost Tracking</div>
+                <div class="metric-row">
+                    <span class="metric-label">Total Cost</span>
+                    <span class="metric-value green" id="total-cost">$0.0000</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Avg Cost/Query</span>
+                    <span class="metric-value blue" id="avg-cost">$0.0000</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Total Tokens</span>
+                    <span class="metric-value cyan" id="total-tokens">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Model (Fast)</span>
+                    <span class="metric-value" id="model-fast" style="color: var(--accent-green);">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Model (Std)</span>
+                    <span class="metric-value" id="model-std" style="color: var(--accent-blue);">0</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-label">Model (Premium)</span>
+                    <span class="metric-value" id="model-prem" style="color: var(--accent-purple);">0</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Response Panel -->
+        <div class="response-panel">
+            <div class="panel-title">📤 AI Response</div>
+            <div class="response-content" id="response-content">
+                <div class="empty-state">
+                    <div class="empty-state-icon">🧠</div>
+                    <div class="empty-state-text">AI response will appear here after query execution</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Ingestion Panel -->
+        <div class="ingestion-panel">
+            <div class="panel-title">📥 Data Ingestion Pipeline</div>
+            <div class="ingestion-controls">
+                <button class="btn btn-secondary" onclick="ingestEvents(50)">Ingest 50 Events</button>
+                <button class="btn btn-secondary" onclick="ingestEvents(200)">Ingest 200 Events</button>
+                <button class="btn btn-secondary" onclick="startContinuousIngestion()">▶ Start Stream</button>
+                <button class="btn btn-secondary" onclick="stopContinuousIngestion()">■ Stop Stream</button>
+                <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;">
+                    Throughput: <span id="throughput" style="color: var(--accent-cyan); font-family: var(--font-mono);">0</span> events/sec
+                </span>
+            </div>
+            <div class="event-stream" id="event-stream"></div>
+        </div>
+
+    </div>
+
+    <script>
+    // ═══════════════════════════════════════════════════════════════════
+    // SIMULATION ENGINE
+    // ═══════════════════════════════════════════════════════════════════
+
+    const STATE = {
+        isRunning: false,
+        continuousIngestion: null,
+        totalQueries: 0,
+        totalEvents: 0,
+        processedEvents: 0,
+        cacheHits: 0,
+        totalRetries: 0,
+        totalFallbacks: 0,
+        totalErrors: 0,
+        totalCost: 0,
+        totalTokens: 0,
+        modelUsage: { fast: 0, standard: 0, premium: 0 },
+        latencies: [],
+        queryCache: new Map(),
+        circuitBreakers: {
+            structured: { state: 'closed', failures: 0 },
+            semantic:   { state: 'closed', failures: 0 },
+            features:   { state: 'closed', failures: 0 },
+            llm:        { state: 'closed', failures: 0 },
+        },
+    };
+
+    // ── Intent Detection ─────────────────────────────────────────────
+
+    const INTENT_MAP = {
+        churn_analysis:   ['churn', 'risk', 'cancel', 'leaving', 'retention', 'at risk'],
+        usage_analysis:   ['usage', 'active', 'engagement', 'session', 'feature', 'trend'],
+        revenue_analysis: ['revenue', 'mrr', 'billing', 'subscription', 'upgrade', 'pricing'],
+        similar_users:    ['similar', 'like', 'pattern', 'cluster', 'cohort', 'behavior'],
+        support_analysis: ['support', 'ticket', 'complaint', 'issue', 'bug', 'help'],
+        health_check:     ['health', 'status', 'overview', 'summary', 'check', 'quick'],
+    };
+
+    function detectIntent(query) {
+        const lower = query.toLowerCase();
+        let best = 'general', bestScore = 0;
+        for (const [intent, keywords] of Object.entries(INTENT_MAP)) {
+            const score = keywords.filter(k => lower.includes(k)).length;
+            if (score > bestScore) { bestScore = score; best = intent; }
+        }
+        return { intent: best, confidence: Math.min(bestScore / 3, 1) };
+    }
+
+    // ── Event Templates ──────────────────────────────────────────────
+
+    const EVENT_TYPES = ['page_view', 'feature_used', 'subscription_event', 'support_ticket', 'api_call'];
+
+    function generateEvent() {
+        const type = EVENT_TYPES[Math.floor(Math.random() * EVENT_TYPES.length)];
+        const userId = `user_${String(Math.floor(Math.random() * 200) + 1).padStart(4, '0')}`;
+        return { event_type: type, user_id: userId, timestamp: new Date().toISOString() };
+    }
+
+    // ── Response Templates ───────────────────────────────────────────
+
+    const RESPONSES = {
+        churn_analysis: `## Churn Risk Analysis
+
+### Key Findings
+Based on real-time analytics and behavioral pattern matching, **{risk_count} enterprise users** are flagged as high churn risk, representing **${(Math.random() * 400000 + 100000).toFixed(0)}** in potential annual revenue loss.
+
+### Risk Factors
+1. **Declining Engagement**: {pct}% of at-risk users show >40% drop in weekly active sessions
+2. **Support Friction**: Average of {tickets} support tickets per at-risk user (3.2x above healthy baseline)
+3. **Feature Abandonment**: Core feature adoption dropped to {adoption}% from 78% in the prior quarter
+
+### Recommended Actions
+| Priority | Action | Expected Impact | Timeline |
+|----------|--------|-----------------|----------|
+| P0 | Proactive outreach to top 10 enterprise accounts | Retain $${(Math.random() * 500000 + 200000).toFixed(0)} ARR | This week |
+| P1 | Fix onboarding flow for new feature | +15% adoption rate | 2 weeks |
+| P2 | Launch re-engagement email campaign | ~8% reactivation | 1 week |`,
+
+        usage_analysis: `## Usage Pattern Analysis
+
+### Engagement Overview
+Active user engagement is trending **{trend}** with **{users}** daily active users. Average session duration: **{minutes} minutes**.
+
+### Feature Adoption
+- **High adoption**: Dashboard views (92%), Report generation (78%)
+- **Low adoption**: API integration ({api}%), Webhook setup ({webhook}%)
+- **Declining**: CSV export (down 23% MoM)
+
+### Recommendations
+1. Invest in API documentation and developer onboarding
+2. Add in-app tutorials for webhook configuration
+3. Investigate CSV export decline — may indicate competing workflow`,
+
+        revenue_analysis: `## Revenue Analysis
+
+### Current Metrics
+- **Total MRR**: $${(Math.random() * 500000 + 200000).toFixed(0)}
+- **MoM Growth**: +{growth}%
+- **Expansion Revenue**: ${(Math.random() * 50000 + 10000).toFixed(0)}
+- **Churn Revenue**: -${(Math.random() * 20000 + 5000).toFixed(0)}
+
+### Tier Breakdown
+| Tier | Users | MRR | ARPU |
+|------|-------|-----|------|
+| Enterprise | {ent} | $${(Math.random() * 200000 + 100000).toFixed(0)} | $${(Math.random() * 2000 + 500).toFixed(0)} |
+| Professional | {pro} | $${(Math.random() * 150000 + 50000).toFixed(0)} | $${(Math.random() * 200 + 50).toFixed(0)} |
+| Starter | {starter} | $${(Math.random() * 50000 + 10000).toFixed(0)} | $${(Math.random() * 50 + 10).toFixed(0)} |`,
+
+        similar_users: `## Behavioral Similarity Analysis
+
+### Cluster Identification
+Found **{clusters} behavioral clusters** matching the query pattern. Top similar users identified using cosine similarity on 128-dimensional behavioral embeddings.
+
+### Similar User Patterns
+1. **user_0089** — similarity: 0.{sim1} — declining_engagement pattern
+2. **user_0156** — similarity: 0.{sim2} — expansion_signal pattern
+3. **user_0023** — similarity: 0.{sim3} — power_user pattern
+
+### Insights
+Users in the same behavioral cluster show {correlation}% correlation in feature usage patterns and {retention}% similar retention outcomes.`,
+
+        support_analysis: `## Support Volume Analysis
+
+### Overview
+- **Open tickets**: {open} ({critical} critical)
+- **Avg resolution time**: {resolution}h
+- **Sentiment trend**: {sentiment}
+
+### Category Breakdown
+| Category | Count | Avg Priority | Trend |
+|----------|-------|-------------|-------|
+| Bug reports | {bugs} | High | ↑ increasing |
+| Feature requests | {features} | Medium | → stable |
+| Billing | {billing} | Low | ↓ decreasing |
+| Onboarding | {onboard} | Medium | ↑ increasing |`,
+
+        health_check: `## Account Health Overview
+
+### Summary
+- **Total monitored accounts**: {accounts}
+- **Healthy (>70)**: {healthy}%
+- **At risk (40-70)**: {atrisk}%
+- **Critical (<40)**: {critical}%
+
+### Top Concerns
+1. Account **user_0042**: Health score dropped from 85 → 42 in 2 weeks
+2. Enterprise segment: 3 accounts below critical threshold
+3. API error rate elevated for 5 accounts`,
+
+        general: `## Analysis Summary
+
+Based on {sources} data sources:
+
+### Key Metrics
+- Users analyzed: **{users}**
+- Average health score: **{health}/100**
+- Revenue at risk: **$${(Math.random() * 100000 + 20000).toFixed(0)}**
+
+### Insights
+The data indicates a correlation between declining feature adoption and increased support volume. Recommend focusing on proactive customer success outreach for the enterprise segment.`,
+    };
+
+    function renderResponse(intent) {
+        const template = RESPONSES[intent] || RESPONSES.general;
+        return template
+            .replace('{risk_count}', Math.floor(Math.random() * 30 + 8))
+            .replace('{pct}', Math.floor(Math.random() * 30 + 55))
+            .replace('{tickets}', Math.floor(Math.random() * 9 + 3))
+            .replace('{adoption}', Math.floor(Math.random() * 25 + 35))
+            .replace('{trend}', ['upward', 'stable', 'slightly downward'][Math.floor(Math.random() * 3)])
+            .replace('{users}', Math.floor(Math.random() * 4000 + 1000))
+            .replace('{minutes}', (Math.random() * 25 + 5).toFixed(1))
+            .replace('{api}', Math.floor(Math.random() * 25 + 15))
+            .replace('{webhook}', Math.floor(Math.random() * 15 + 8))
+            .replace('{growth}', (Math.random() * 8 + 1).toFixed(1))
+            .replace('{ent}', Math.floor(Math.random() * 50 + 20))
+            .replace('{pro}', Math.floor(Math.random() * 300 + 100))
+            .replace('{starter}', Math.floor(Math.random() * 1000 + 200))
+            .replace('{clusters}', Math.floor(Math.random() * 6 + 2))
+            .replace('{sim1}', Math.floor(Math.random() * 20 + 80))
+            .replace('{sim2}', Math.floor(Math.random() * 15 + 70))
+            .replace('{sim3}', Math.floor(Math.random() * 15 + 65))
+            .replace('{correlation}', Math.floor(Math.random() * 20 + 70))
+            .replace('{retention}', Math.floor(Math.random() * 15 + 75))
+            .replace('{open}', Math.floor(Math.random() * 50 + 20))
+            .replace('{critical}', Math.floor(Math.random() * 5 + 1))
+            .replace('{resolution}', (Math.random() * 20 + 4).toFixed(1))
+            .replace('{sentiment}', ['improving', 'stable', 'declining'][Math.floor(Math.random() * 3)])
+            .replace('{bugs}', Math.floor(Math.random() * 20 + 5))
+            .replace('{features}', Math.floor(Math.random() * 15 + 5))
+            .replace('{billing}', Math.floor(Math.random() * 10 + 2))
+            .replace('{onboard}', Math.floor(Math.random() * 10 + 3))
+            .replace('{accounts}', Math.floor(Math.random() * 200 + 50))
+            .replace('{healthy}', Math.floor(Math.random() * 20 + 60))
+            .replace('{atrisk}', Math.floor(Math.random() * 15 + 15))
+            .replace(/\{critical\}/g, Math.floor(Math.random() * 10 + 3))
+            .replace('{sources}', Math.floor(Math.random() * 3 + 2))
+            .replace('{health}', Math.floor(Math.random() * 30 + 50));
+    }
+
+    // ── Model Routing ────────────────────────────────────────────────
+
+    function routeModel(intent) {
+        if (['health_check'].includes(intent)) return { tier: 'fast', name: 'gpt-4o-mini', costIn: 0.00015, costOut: 0.0006, latency: 300 };
+        if (['churn_analysis', 'similar_users'].includes(intent)) return { tier: 'premium', name: 'gpt-4-turbo', costIn: 0.01, costOut: 0.03, latency: 2000 };
+        return { tier: 'standard', name: 'gpt-4o', costIn: 0.0025, costOut: 0.01, latency: 800 };
+    }
+
+    // ── Stage Simulation ─────────────────────────────────────────────
+
+    function simLatency(base, variance) {
+        return base + (Math.random() * variance * 2 - variance);
+    }
+
+    function simFailure(rate) {
+        return Math.random() < rate;
+    }
+
+    // ── UI Helpers ───────────────────────────────────────────────────
+
+    function $(id) { return document.getElementById(id); }
+
+    function addTrace(stage, msg, type = 'success') {
+        const log = $('trace-log');
+        if (log.querySelector('.empty-state')) log.innerHTML = '';
+        const now = new Date();
+        const time = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}.${String(now.getMilliseconds()).padStart(3,'0')}`;
+        const entry = document.createElement('div');
+        entry.className = `trace-entry ${type}`;
+        entry.innerHTML = `<span class="trace-time">${time}</span><span class="trace-stage">${stage}</span><span class="trace-msg">${msg}</span>`;
+        log.appendChild(entry);
+        log.scrollTop = log.scrollHeight;
+    }
+
+    function setStageState(stageId, state) {
+        const el = $(`stage-${stageId}`);
+        el.classList.remove('active', 'completed', 'error');
+        if (state) el.classList.add(state);
+    }
+
+    function setStageLatency(stageId, ms) {
+        $(`lat-${stageId}`).textContent = ms != null ? `${ms.toFixed(0)}ms` : '—';
+    }
+
+    function setArrowActive(idx, active) {
+        const el = $(`arrow-${idx}`);
+        if (active) el.classList.add('active'); else el.classList.remove('active');
+    }
+
+    function resetPipeline() {
+        ['kafka', 'stream', 'query', 'retrieval', 'agent', 'llm', 'response'].forEach(s => {
+            setStageState(s, null);
+            setStageLatency(s, null);
+        });
+        for (let i = 0; i < 6; i++) setArrowActive(i, false);
+    }
+
+    function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    function updateMetrics() {
+        $('total-queries').textContent = STATE.totalQueries;
+        $('total-queries-badge').textContent = STATE.totalQueries;
+        $('events-ingested').textContent = STATE.totalEvents.toLocaleString();
+        $('events-processed').textContent = STATE.processedEvents.toLocaleString();
+        $('cache-hits').textContent = STATE.cacheHits;
+        $('cache-rate').textContent = STATE.totalQueries > 0
+            ? (STATE.cacheHits / STATE.totalQueries * 100).toFixed(0) + '%' : '0%';
+        $('total-retries').textContent = STATE.totalRetries;
+        $('total-fallbacks').textContent = STATE.totalFallbacks;
+        $('total-errors').textContent = STATE.totalErrors;
+        $('success-rate').textContent = STATE.totalQueries > 0
+            ? ((1 - STATE.totalErrors / STATE.totalQueries) * 100).toFixed(1) + '%' : '100%';
+        $('total-cost').textContent = '$' + STATE.totalCost.toFixed(4);
+        $('avg-cost').textContent = STATE.totalQueries > 0
+            ? '$' + (STATE.totalCost / STATE.totalQueries).toFixed(4) : '$0.0000';
+        $('total-tokens').textContent = STATE.totalTokens.toLocaleString();
+        $('model-fast').textContent = STATE.modelUsage.fast;
+        $('model-std').textContent = STATE.modelUsage.standard;
+        $('model-prem').textContent = STATE.modelUsage.premium;
+
+        // Percentiles
+        if (STATE.latencies.length > 0) {
+            const sorted = [...STATE.latencies].sort((a, b) => a - b);
+            const n = sorted.length;
+            $('total-latency').textContent = sorted[sorted.length - 1].toFixed(0) + 'ms';
+            $('p50').textContent = sorted[Math.floor(n * 0.5)].toFixed(0) + 'ms';
+            $('p95').textContent = sorted[Math.min(Math.floor(n * 0.95), n - 1)].toFixed(0) + 'ms';
+            $('p99').textContent = sorted[Math.min(Math.floor(n * 0.99), n - 1)].toFixed(0) + 'ms';
+        }
+
+        // Circuit breakers
+        const cbGrid = $('circuit-grid');
+        cbGrid.innerHTML = Object.entries(STATE.circuitBreakers).map(([name, cb]) => {
+            return `<div class="circuit-item">
+                <div class="circuit-name">${name.charAt(0).toUpperCase() + name.slice(1)}</div>
+                <div class="circuit-state"><div class="circuit-dot ${cb.state}"></div> ${cb.state.charAt(0).toUpperCase() + cb.state.slice(1)}</div>
+            </div>`;
+        }).join('');
+    }
+
+    function renderWaterfall(stages) {
+        const container = $('waterfall');
+        const total = stages.reduce((a, s) => a + s.latency, 0);
+        let offset = 0;
+        const colors = {
+            kafka: 'var(--accent-orange)',
+            stream: 'var(--accent-purple)',
+            query: 'var(--accent-cyan)',
+            retrieval: 'var(--accent-blue)',
+            agent: 'var(--accent-pink)',
+            llm: 'var(--accent-green)',
+            response: 'var(--accent-cyan)',
+        };
+
+        container.innerHTML = stages.map(s => {
+            const left = (offset / total) * 100;
+            const width = Math.max((s.latency / total) * 100, 3);
+            offset += s.latency;
+            return `<div class="waterfall-row">
+                <span class="waterfall-label">${s.label}</span>
+                <div class="waterfall-track">
+                    <div class="waterfall-bar" style="left:${left}%;width:${width}%;background:${colors[s.id] || 'var(--accent-blue)'};">
+                        ${s.latency.toFixed(0)}ms
+                    </div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // ── Query Execution ──────────────────────────────────────────────
+
+    function setQuery(q) {
+        $('query-input').value = q;
+    }
+
+    async function runQuery() {
+        if (STATE.isRunning) return;
+        STATE.isRunning = true;
+        $('run-btn').disabled = true;
+
+        const query = $('query-input').value.trim();
+        if (!query) { STATE.isRunning = false; $('run-btn').disabled = false; return; }
+
+        // Reset
+        resetPipeline();
+        $('trace-log').innerHTML = '';
+        $('response-content').innerHTML = '<div class="typing-cursor"></div>';
+        STATE.totalQueries++;
+
+        const stageLatencies = [];
+        let cacheHit = false;
+
+        try {
+            // ── Stage 1: Kafka (simulated context) ──
+            setStageState('kafka', 'active');
+            const kafkaLat = simLatency(15, 10);
+            addTrace('kafka_ingestion', `Consuming from topic: user-events (12 partitions)`, 'running');
+            await delay(kafkaLat);
+            setStageLatency('kafka', kafkaLat);
+            setStageState('kafka', 'completed');
+            setArrowActive(0, true);
+            addTrace('kafka_ingestion', `Events available for query context — ${kafkaLat.toFixed(0)}ms`, 'success');
+            stageLatencies.push({ id: 'kafka', label: 'Kafka', latency: kafkaLat });
+
+            // ── Stage 2: Stream Processing ──
+            setStageState('stream', 'active');
+            const streamLat = simLatency(25, 15);
+            addTrace('stream_processing', `Enriching event context: profile lookup + feature join`, 'running');
+            await delay(streamLat);
+            setStageLatency('stream', streamLat);
+            setStageState('stream', 'completed');
+            setArrowActive(1, true);
+            addTrace('stream_processing', `Context enriched — ${streamLat.toFixed(0)}ms`, 'success');
+            stageLatencies.push({ id: 'stream', label: 'Stream Proc', latency: streamLat });
+
+            // ── Stage 3: Query Understanding ──
+            setStageState('query', 'active');
+            const queryLat = simLatency(8, 5);
+            const { intent, confidence } = detectIntent(query);
+            addTrace('query_understanding', `Intent: ${intent} (conf=${(confidence * 100).toFixed(0)}%)`, 'running');
+            await delay(queryLat);
+            setStageLatency('query', queryLat);
+            setStageState('query', 'completed');
+            setArrowActive(2, true);
+            addTrace('query_understanding', `Routing: structured=${intent !== 'similar_users'} semantic=${['churn_analysis','similar_users','support_analysis'].includes(intent)} — ${queryLat.toFixed(0)}ms`, 'success');
+            stageLatencies.push({ id: 'query', label: 'Query Parsing', latency: queryLat });
+
+            // ── Cache Check ──
+            const cacheKey = query.toLowerCase().trim();
+            if (STATE.queryCache.has(cacheKey)) {
+                cacheHit = true;
+                STATE.cacheHits++;
+                addTrace('cache', `Cache HIT — returning cached result`, 'success');
+            }
+
+            // ── Stage 4: Retrieval ──
+            setStageState('retrieval', 'active');
+            let retrievalLat;
+            if (cacheHit) {
+                retrievalLat = simLatency(3, 2);
+                addTrace('retrieval_engine', `Serving from cache — ${retrievalLat.toFixed(0)}ms`, 'success');
+            } else {
+                retrievalLat = simLatency(45, 25);
+                const pinotLat = simLatency(20, 10);
+                const vectorLat = simLatency(15, 10);
+
+                // Simulate possible retrieval failure
+                if (simFailure(0.05)) {
+                    STATE.totalRetries++;
+                    addTrace('structured_retrieval', `Pinot timeout — retrying (attempt 2)...`, 'error');
+                    await delay(50);
+
+                    if (simFailure(0.3)) {
+                        STATE.totalFallbacks++;
+                        STATE.circuitBreakers.structured.failures++;
+                        if (STATE.circuitBreakers.structured.failures >= 3) {
+                            STATE.circuitBreakers.structured.state = 'open';
+                        }
+                        addTrace('structured_retrieval', `Retry failed — using cached fallback`, 'fallback');
+                    } else {
+                        addTrace('structured_retrieval', `Retry succeeded`, 'success');
+                    }
+                } else {
+                    addTrace('structured_retrieval', `Pinot query completed — ${pinotLat.toFixed(0)}ms (${Math.floor(Math.random() * 8 + 3)} results)`, 'success');
+                }
+
+                if (['churn_analysis', 'similar_users', 'support_analysis'].includes(intent)) {
+                    if (simFailure(0.03)) {
+                        STATE.totalFallbacks++;
+                        addTrace('semantic_retrieval', `Vector search timeout — falling back to keyword search`, 'fallback');
+                    } else {
+                        addTrace('semantic_retrieval', `Vector ANN search — ${vectorLat.toFixed(0)}ms (5 results, top score: 0.${Math.floor(Math.random() * 15 + 82)})`, 'success');
+                    }
+                    addTrace('rank_fusion', `RRF fusion — merged ${Math.floor(Math.random() * 5 + 8)} unique results`, 'success');
+                }
+            }
+            await delay(retrievalLat);
+            setStageLatency('retrieval', retrievalLat);
+            setStageState('retrieval', 'completed');
+            setArrowActive(3, true);
+            stageLatencies.push({ id: 'retrieval', label: 'Retrieval', latency: retrievalLat });
+
+            // ── Stage 5: Agent Orchestration ──
+            setStageState('agent', 'active');
+            const agentLat = simLatency(60, 30);
+            addTrace('agent_orchestrator', `Planning tools: structured_retrieval, semantic_retrieval, feature_lookup`, 'running');
+            await delay(agentLat * 0.3);
+            addTrace('tool_executor', `Executing 3 tools (parallel where independent)`, 'running');
+            await delay(agentLat * 0.5);
+
+            if (simFailure(0.04)) {
+                STATE.totalRetries++;
+                addTrace('tool_executor', `feature_lookup timeout — retry (backoff: 100ms)`, 'error');
+                await delay(agentLat * 0.2);
+                addTrace('tool_executor', `feature_lookup retry succeeded`, 'success');
+            }
+
+            addTrace('context_assembly', `Assembled context: ~${Math.floor(Math.random() * 1500 + 800)} tokens from 3 sources`, 'success');
+            await delay(agentLat * 0.2);
+            setStageLatency('agent', agentLat);
+            setStageState('agent', 'completed');
+            setArrowActive(4, true);
+            stageLatencies.push({ id: 'agent', label: 'Orchestration', latency: agentLat });
+
+            // ── Stage 6: LLM Reasoning ──
+            setStageState('llm', 'active');
+            const model = routeModel(intent);
+            const llmLat = simLatency(model.latency, model.latency * 0.3);
+            const inputTokens = Math.floor(Math.random() * 1500 + 500);
+            const outputTokens = Math.floor(Math.random() * 600 + 200);
+            const cost = (inputTokens / 1000) * model.costIn + (outputTokens / 1000) * model.costOut;
+
+            addTrace('llm_reasoning', `Model: ${model.name} (${model.tier}) — processing...`, 'running');
+            await delay(llmLat * 0.3);
+            addTrace('llm_reasoning', `Prompt: ${inputTokens} tokens — generating response...`, 'running');
+
+            // Simulate streaming response
+            const responseText = renderResponse(intent);
+            const responseEl = $('response-content');
+            responseEl.innerHTML = '';
+            const lines = responseText.split('\n');
+            let lineIdx = 0;
+
+            async function streamLine() {
+                if (lineIdx < lines.length) {
+                    responseEl.textContent += lines[lineIdx] + '\n';
+                    responseEl.scrollTop = responseEl.scrollHeight;
+                    lineIdx++;
+                    await delay(llmLat / lines.length);
+                    await streamLine();
+                }
+            }
+
+            await streamLine();
+
+            STATE.totalTokens += inputTokens + outputTokens;
+            STATE.totalCost += cost;
+            STATE.modelUsage[model.tier]++;
+
+            setStageLatency('llm', llmLat);
+            setStageState('llm', 'completed');
+            setArrowActive(5, true);
+            addTrace('llm_reasoning', `Generated ${outputTokens} tokens — cost: $${cost.toFixed(4)} — ${llmLat.toFixed(0)}ms`, 'success');
+            stageLatencies.push({ id: 'llm', label: 'LLM Reasoning', latency: llmLat });
+
+            // ── Stage 7: Response ──
+            setStageState('response', 'active');
+            const responseLat = simLatency(5, 3);
+            await delay(responseLat);
+            setStageLatency('response', responseLat);
+            setStageState('response', 'completed');
+            addTrace('response_delivery', `Response delivered — total: ${stageLatencies.reduce((a, s) => a + s.latency, 0).toFixed(0)}ms`, 'success');
+            stageLatencies.push({ id: 'response', label: 'Response', latency: responseLat });
+
+            // Cache the result
+            if (!cacheHit) {
+                STATE.queryCache.set(cacheKey, true);
+            }
+
+            // Record total latency
+            const totalLat = stageLatencies.reduce((a, s) => a + s.latency, 0);
+            STATE.latencies.push(totalLat);
+
+            // Render waterfall
+            renderWaterfall(stageLatencies);
+
+        } catch (err) {
+            STATE.totalErrors++;
+            addTrace('error', `Pipeline error: ${err.message}`, 'error');
+        }
+
+        updateMetrics();
+        STATE.isRunning = false;
+        $('run-btn').disabled = false;
+    }
+
+    // ── Data Ingestion ───────────────────────────────────────────────
+
+    function ingestEvents(count) {
+        const stream = $('event-stream');
+        STATE.totalEvents += count;
+        const failed = Math.floor(count * Math.random() * 0.03);
+        STATE.processedEvents += (count - failed);
+
+        // Show event pills
+        const showCount = Math.min(count, 40);
+        for (let i = 0; i < showCount; i++) {
+            const event = generateEvent();
+            const pill = document.createElement('span');
+            pill.className = `event-pill ${event.event_type}`;
+            pill.textContent = `${event.event_type} → ${event.user_id}`;
+            stream.insertBefore(pill, stream.firstChild);
+        }
+
+        // Trim old pills
+        while (stream.children.length > 60) {
+            stream.removeChild(stream.lastChild);
+        }
+
+        addTrace('data_ingestion', `Ingested ${count} events (${failed} failed → DLQ)`, failed > 0 ? 'fallback' : 'success');
+        updateMetrics();
+    }
+
+    let ingestionInterval = null;
+
+    function startContinuousIngestion() {
+        if (ingestionInterval) return;
+        ingestionInterval = setInterval(() => {
+            const batch = Math.floor(Math.random() * 20 + 10);
+            ingestEvents(batch);
+            $('throughput').textContent = (batch * (1000 / 500)).toFixed(0);
+        }, 500);
+    }
+
+    function stopContinuousIngestion() {
+        if (ingestionInterval) {
+            clearInterval(ingestionInterval);
+            ingestionInterval = null;
+            $('throughput').textContent = '0';
+        }
+    }
+
+    // ── Keyboard shortcut ────────────────────────────────────────────
+
+    $('query-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') runQuery();
+    });
+
+    // ── Initialize ───────────────────────────────────────────────────
+    updateMetrics();
+    </script>
+</body>
+</html>
