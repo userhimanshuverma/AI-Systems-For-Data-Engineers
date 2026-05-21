@@ -1,0 +1,1922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Activity Intelligence Platform - Day 28 System Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-base: #0a0c14;
+      --bg-surface: #121622;
+      --bg-panel: #181d2f;
+      --border-color: rgba(255, 255, 255, 0.08);
+      
+      --cyan: #00f2fe;
+      --magenta: #ff007f;
+      --green: #39ff14;
+      --orange: #ffb300;
+      --red: #ff073a;
+      
+      --text-main: #e2e8f0;
+      --text-muted: #64748b;
+      --text-glow: 0 0 10px rgba(0, 242, 254, 0.3);
+      
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-base);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      overflow-x: hidden;
+      padding-bottom: 2rem;
+    }
+
+    header {
+      background: linear-gradient(180deg, rgba(24, 29, 47, 0.6) 0%, rgba(10, 12, 20, 0) 100%);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1.25rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      backdrop-filter: blur(10px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: var(--font-display);
+      font-weight: 600;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-logo {
+      width: 2rem;
+      height: 2rem;
+      background: linear-gradient(135deg, var(--cyan), var(--magenta));
+      border-radius: 6px;
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      color: #000;
+      font-size: 1.1rem;
+    }
+
+    .brand-title {
+      font-size: 1.25rem;
+      letter-spacing: 0.5px;
+      background: linear-gradient(90deg, #fff, var(--text-muted));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-badge {
+      background: rgba(0, 242, 254, 0.1);
+      border: 1px solid var(--cyan);
+      color: var(--cyan);
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      text-transform: uppercase;
+      box-shadow: var(--text-glow);
+    }
+
+    .system-status {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .status-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--green);
+      box-shadow: 0 0 10px var(--green);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 0.4; }
+      50% { opacity: 1; }
+      100% { opacity: 0.4; }
+    }
+
+    .container {
+      max-width: 1600px;
+      margin: 1.5rem auto;
+      padding: 0 1.5rem;
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 1.5rem;
+    }
+
+    /* Cards */
+    .card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      backdrop-filter: blur(4px);
+    }
+
+    .card-header {
+      margin-bottom: 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 0.75rem;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Metrics Grid */
+    .metrics-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+
+    .metric-card {
+      background: linear-gradient(135deg, rgba(24, 29, 47, 0.6) 0%, rgba(18, 22, 34, 0.8) 100%);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .metric-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--cyan);
+    }
+
+    .metric-card.alert::before {
+      background: var(--red);
+    }
+
+    .metric-card.warn::before {
+      background: var(--orange);
+    }
+
+    .metric-card.success::before {
+      background: var(--green);
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+    }
+
+    .metric-value {
+      font-family: var(--font-mono);
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .metric-sub {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    /* Sidebar controls */
+    .controls-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .control-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .slider-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+
+    .slider-header {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+    }
+
+    .slider-val {
+      font-family: var(--font-mono);
+      color: var(--cyan);
+      font-weight: bold;
+    }
+
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      background: #1e2538;
+      height: 6px;
+      border-radius: 3px;
+      outline: none;
+    }
+
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--cyan);
+      cursor: pointer;
+      box-shadow: 0 0 8px var(--cyan);
+      transition: transform 0.1s;
+    }
+
+    input[type=range]::-webkit-slider-thumb:hover {
+      transform: scale(1.2);
+    }
+
+    .toggle-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      padding: 0.5rem 0.75rem;
+      border-radius: 6px;
+      transition: border-color 0.2s;
+    }
+
+    .toggle-container:hover {
+      border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .toggle-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+
+    .toggle-name {
+      font-size: 0.85rem;
+      color: var(--text-main);
+    }
+
+    .toggle-desc {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+    }
+
+    /* Switch */
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 20px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #1e2538;
+      transition: .3s;
+      border-radius: 34px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 14px;
+      width: 14px;
+      left: 3px;
+      bottom: 3px;
+      background-color: var(--text-muted);
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: rgba(255, 0, 127, 0.2);
+      border: 1px solid var(--magenta);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(20px);
+      background-color: var(--magenta);
+      box-shadow: 0 0 8px var(--magenta);
+    }
+
+    .btn {
+      width: 100%;
+      background: linear-gradient(135deg, var(--cyan) 0%, rgba(0, 242, 254, 0.6) 100%);
+      color: #000;
+      border: none;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 0.9rem;
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.2);
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 20px rgba(0, 242, 254, 0.4);
+    }
+
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 1px solid var(--magenta);
+      color: var(--magenta);
+      box-shadow: none;
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 0, 127, 0.08);
+      box-shadow: 0 0 15px rgba(255, 0, 127, 0.2);
+    }
+
+    /* Main Area Grid */
+    .main-grid {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 1.5rem;
+    }
+
+    /* SVG Diagram */
+    .topology-container {
+      position: relative;
+      background: #0e111a;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+      height: 380px;
+    }
+
+    .topology-svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .node {
+      cursor: pointer;
+      transition: filter 0.2s;
+    }
+
+    .node:hover {
+      filter: brightness(1.2) drop-shadow(0 0 8px rgba(255, 255, 255, 0.1));
+    }
+
+    .node circle {
+      fill: var(--bg-panel);
+      stroke: var(--text-muted);
+      stroke-width: 2px;
+      transition: all 0.3s;
+    }
+
+    .node.healthy circle {
+      stroke: var(--green);
+      filter: drop-shadow(0 0 4px rgba(57, 255, 20, 0.3));
+    }
+
+    .node.degraded circle {
+      stroke: var(--orange);
+      filter: drop-shadow(0 0 4px rgba(255, 179, 0, 0.3));
+    }
+
+    .node.failed circle {
+      stroke: var(--red);
+      filter: drop-shadow(0 0 4px rgba(255, 7, 58, 0.3));
+    }
+
+    .node text {
+      fill: var(--text-main);
+      font-size: 0.75rem;
+      font-family: var(--font-display);
+      text-anchor: middle;
+      font-weight: 500;
+    }
+
+    .node-subtitle {
+      fill: var(--text-muted) !important;
+      font-size: 0.6rem !important;
+      font-family: var(--font-mono) !important;
+    }
+
+    .edge {
+      stroke: rgba(255, 255, 255, 0.08);
+      stroke-width: 1.5px;
+      fill: none;
+      transition: stroke 0.3s;
+    }
+
+    .edge.active {
+      stroke: var(--cyan);
+      stroke-dasharray: 6, 4;
+      animation: dash 30s linear infinite;
+    }
+
+    .edge.degraded {
+      stroke: var(--orange);
+      stroke-dasharray: 6, 4;
+      animation: dash 15s linear infinite;
+    }
+
+    .edge.failed {
+      stroke: var(--red);
+    }
+
+    @keyframes dash {
+      to {
+        stroke-dashoffset: -1000;
+      }
+    }
+
+    /* Live Output Split */
+    .output-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      min-height: 400px;
+    }
+
+    /* Terminal Console */
+    .terminal {
+      background-color: #05070a;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 1rem;
+      overflow-y: auto;
+      height: 380px;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
+    }
+
+    .terminal-line {
+      line-height: 1.4;
+      white-space: pre-wrap;
+    }
+
+    .terminal-line.info {
+      color: #94a3b8;
+    }
+
+    .terminal-line.success {
+      color: var(--green);
+    }
+
+    .terminal-line.warn {
+      color: var(--orange);
+    }
+
+    .terminal-line.error {
+      color: var(--red);
+      font-weight: bold;
+    }
+
+    .terminal-line.telemetry {
+      color: var(--cyan);
+    }
+
+    .terminal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      font-size: 0.8rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      padding-bottom: 0.25rem;
+      color: var(--text-muted);
+    }
+
+    /* Trace Explorer */
+    .trace-explorer {
+      background-color: #07090e;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1rem;
+      height: 380px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: #38bdf8;
+    }
+
+    .trace-tree {
+      margin-left: 0.5rem;
+    }
+
+    .trace-span-node {
+      border-left: 1px dashed rgba(255,255,255,0.1);
+      margin-top: 0.5rem;
+      padding-left: 0.75rem;
+    }
+
+    .trace-span-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255,255,255,0.02);
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .span-name {
+      font-weight: bold;
+      color: #fff;
+    }
+
+    .span-latency {
+      color: var(--cyan);
+    }
+
+    .span-status {
+      font-size: 0.65rem;
+      padding: 0.1rem 0.3rem;
+      border-radius: 3px;
+      text-transform: uppercase;
+      font-weight: bold;
+    }
+
+    .span-status.success {
+      background: rgba(57, 255, 20, 0.15);
+      color: var(--green);
+      border: 1px solid var(--green);
+    }
+
+    .span-status.degraded {
+      background: rgba(255, 179, 0, 0.15);
+      color: var(--orange);
+      border: 1px solid var(--orange);
+    }
+
+    .span-status.failed {
+      background: rgba(255, 7, 58, 0.15);
+      color: var(--red);
+      border: 1px solid var(--red);
+    }
+
+    .span-status.aborted {
+      background: rgba(148, 163, 184, 0.15);
+      color: #94a3b8;
+      border: 1px solid #94a3b8;
+    }
+
+    .span-meta {
+      color: #64748b;
+      margin-top: 0.25rem;
+      padding-left: 0.5rem;
+      font-size: 0.7rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+
+    /* LLM Report Display */
+    .llm-report-section {
+      grid-column: 1 / -1;
+    }
+
+    .llm-report-content {
+      background-color: rgba(24, 29, 47, 0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 1.5rem;
+      font-family: var(--font-body);
+      line-height: 1.6;
+      font-size: 0.95rem;
+      color: var(--text-main);
+      min-height: 200px;
+      overflow-y: auto;
+      max-height: 400px;
+    }
+
+    .llm-report-content h3 {
+      color: var(--cyan);
+      margin-bottom: 1rem;
+      font-size: 1.2rem;
+      border-left: 3px solid var(--cyan);
+      padding-left: 0.5rem;
+    }
+
+    .llm-report-content h4 {
+      color: #fff;
+      margin: 1rem 0 0.5rem 0;
+      font-size: 1rem;
+    }
+
+    .llm-report-content ul {
+      margin-left: 1.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .llm-report-content li {
+      margin-bottom: 0.4rem;
+    }
+
+    .llm-report-content strong {
+      color: var(--magenta);
+    }
+
+    /* Canvas Chart */
+    .chart-container {
+      margin-top: 1rem;
+      height: 100px;
+      width: 100%;
+      position: relative;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="brand-logo">A</div>
+      <div>
+        <h1 class="brand-title">User Activity Intelligence Platform</h1>
+        <div style="display:flex; align-items:center; gap:0.5rem; margin-top:2px;">
+          <span class="brand-badge">Day 28 Simulation</span>
+          <span style="font-size:0.7rem; color:var(--text-muted)">Stateful Lambda-hybrid Agent Retriever</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="system-status">
+      <div class="status-item">
+        <div class="status-dot" id="system-status-dot"></div>
+        <span id="system-status-text">SYSTEM HEALTHY</span>
+      </div>
+      <div class="status-item">
+        <span style="color:var(--text-muted)">Uptime:</span>
+        <span id="uptime-clock" style="font-family:var(--font-mono)">00:00:00</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    
+    <!-- LEFT SIDEBAR: CONTROLS -->
+    <aside class="controls-panel">
+      
+      <!-- Trigger Query -->
+      <div class="card">
+        <div class="card-header" style="border:none; margin:0; padding:0;">
+          <h2 class="card-title">Query Console</h2>
+        </div>
+        <div class="control-group" style="margin-top:1rem;">
+          <button class="btn" id="btn-run-query">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 3l14 9-14 9V3z"/></svg>
+            Execute Insight Query
+          </button>
+          <button class="btn btn-secondary" id="btn-retry-storm" style="margin-top:0.5rem;">
+            Trigger Retry Storm
+          </button>
+        </div>
+      </div>
+      
+      <!-- Sliders -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">System Tuning</h2>
+        </div>
+        <div class="control-group">
+          
+          <div class="slider-container">
+            <div class="slider-header">
+              <span>Traffic Load</span>
+              <span class="slider-val" id="val-traffic">10 ev/s</span>
+            </div>
+            <input type="range" id="input-traffic" min="1" max="50" value="10">
+          </div>
+          
+          <div class="slider-container" style="margin-top:0.5rem;">
+            <div class="slider-header">
+              <span>Retrieval Depth (K)</span>
+              <span class="slider-val" id="val-depth">5 records</span>
+            </div>
+            <input type="range" id="input-depth" min="1" max="20" value="5">
+          </div>
+          
+        </div>
+      </div>
+      
+      <!-- Chaos Injection Switches -->
+      <div class="card">
+        <div class="card-header">
+          <h2 class="card-title">Chaos Engineering</h2>
+        </div>
+        <div class="control-group">
+          
+          <!-- Kafka Broker Lag -->
+          <div class="toggle-container">
+            <div class="toggle-info">
+              <span class="toggle-name">Kafka Broker Lag</span>
+              <span class="toggle-desc">Partition message queues backlog</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-kafka-lag">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <!-- Pinot Latency Spike -->
+          <div class="toggle-container">
+            <div class="toggle-info">
+              <span class="toggle-name">Pinot Index Degrade</span>
+              <span class="toggle-desc">Forces slow table scans (&gt;1.5s)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-pinot-latency">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <!-- Vector DB Outage -->
+          <div class="toggle-container">
+            <div class="toggle-info">
+              <span class="toggle-name">Vector DB Outage</span>
+              <span class="toggle-desc">Trips connection failures (500)</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-vector-outage">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <!-- LLM Rate Limits -->
+          <div class="toggle-container">
+            <div class="toggle-info">
+              <span class="toggle-name">LLM Rate Limit (429)</span>
+              <span class="toggle-desc">API Gateway throttling storm</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-llm-limit">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+          <!-- Stale Embeddings -->
+          <div class="toggle-container">
+            <div class="toggle-info">
+              <span class="toggle-name">Stale Embeddings</span>
+              <span class="toggle-desc">Triggers model hallucinations</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="switch-stale-embeddings">
+              <span class="slider"></span>
+            </label>
+          </div>
+          
+        </div>
+      </div>
+      
+    </aside>
+    
+    <!-- RIGHT MAIN WORKSPACE -->
+    <section class="main-grid">
+      
+      <!-- Metrics Bar -->
+      <div class="metrics-row">
+        <div class="metric-card success" id="card-throughput">
+          <span class="metric-label">Flink Throughput</span>
+          <span class="metric-value" id="metric-throughput">0 /s</span>
+          <span class="metric-sub">Processed background events</span>
+        </div>
+        <div class="metric-card success" id="card-latency">
+          <span class="metric-label">P95 Query Latency</span>
+          <span class="metric-value" id="metric-latency">0 ms</span>
+          <span class="metric-sub">SLA Limit: 1500ms</span>
+        </div>
+        <div class="metric-card success" id="card-error-rate">
+          <span class="metric-label">SLA Breach Rate</span>
+          <span class="metric-value" id="metric-error-rate">0.0%</span>
+          <span class="metric-sub">Goal: &lt; 2% query fail/timeout</span>
+        </div>
+        <div class="metric-card" id="card-cost">
+          <span class="metric-label">Cumulative Cost</span>
+          <span class="metric-value" id="metric-cost">$0.00</span>
+          <span class="metric-sub">Dynamically routed tokens</span>
+        </div>
+      </div>
+      
+      <!-- SVG Network Architecture -->
+      <div class="topology-container">
+        <svg class="topology-svg" id="topology">
+          
+          <!-- Definitions for glowing marker arrows -->
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(255,255,255,0.15)"/>
+            </marker>
+            <marker id="arrow-cyan" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--cyan)"/>
+            </marker>
+          </defs>
+
+          <!-- Links/Edges -->
+          <path id="edge-producer-kafka" class="edge active" d="M 60,110 L 170,110" marker-end="url(#arrow-cyan)"/>
+          <path id="edge-kafka-flink" class="edge active" d="M 230,110 L 330,110" marker-end="url(#arrow-cyan)"/>
+          
+          <!-- Paths from Flink to Databases -->
+          <path id="edge-flink-pinot" class="edge active" d="M 390,110 Q 480,60 570,70" marker-end="url(#arrow-cyan)"/>
+          <path id="edge-flink-vector" class="edge active" d="M 390,110 Q 480,160 570,150" marker-end="url(#arrow-cyan)"/>
+          
+          <!-- Path from Query Client to Agent -->
+          <path id="edge-client-agent" class="edge" d="M 120,290 L 310,290" marker-end="url(#arrow)"/>
+          
+          <!-- Paths from Agent to DBs (Double-ended query path) -->
+          <path id="edge-agent-pinot" class="edge" d="M 370,290 L 570,85" marker-end="url(#arrow)"/>
+          <path id="edge-agent-vector" class="edge" d="M 370,290 L 570,160" marker-end="url(#arrow)"/>
+          
+          <!-- Cache query path -->
+          <path id="edge-agent-cache" class="edge" d="M 340,260 Q 440,220 540,240" marker-end="url(#arrow)"/>
+          
+          <!-- Path from Agent to LLM -->
+          <path id="edge-agent-llm" class="edge" d="M 340,320 Q 520,340 700,320" marker-end="url(#arrow)"/>
+
+          <!-- Nodes: Ingestion path (Top Row) -->
+          <g class="node healthy" id="node-producer" transform="translate(60,110)">
+            <circle r="22"/>
+            <text y="4">Producer</text>
+            <text y="32" class="node-subtitle">Web clients</text>
+          </g>
+          <g class="node healthy" id="node-kafka" transform="translate(200,110)">
+            <circle r="24"/>
+            <text y="4">Kafka</text>
+            <text y="32" class="node-subtitle" id="label-kafka">topic:0 lag:0</text>
+          </g>
+          <g class="node healthy" id="node-flink" transform="translate(360,110)">
+            <circle r="24"/>
+            <text y="4">Flink</text>
+            <text y="32" class="node-subtitle" id="label-flink">window 30m</text>
+          </g>
+
+          <!-- Storage Tier (Middle Right) -->
+          <g class="node healthy" id="node-pinot" transform="translate(600,75)">
+            <circle r="24"/>
+            <text y="4">Pinot OLAP</text>
+            <text y="32" class="node-subtitle" id="label-pinot">CB: CLOSED</text>
+          </g>
+          <g class="node healthy" id="node-vector" transform="translate(600,150)">
+            <circle r="24"/>
+            <text y="4">Vector DB</text>
+            <text y="32" class="node-subtitle" id="label-vector">HNSW cosine</text>
+          </g>
+          <g class="node healthy" id="node-cache" transform="translate(570,240)">
+            <circle r="22"/>
+            <text y="4">Cache</text>
+            <text y="32" class="node-subtitle">TTL 180s</text>
+          </g>
+
+          <!-- Orchestration & Reasoning (Bottom Row) -->
+          <g class="node healthy" id="node-agent" transform="translate(340,290)">
+            <circle r="26"/>
+            <text y="4">Orchestrator</text>
+            <text y="34" class="node-subtitle" id="label-agent">Budget: 1500ms</text>
+          </g>
+          <g class="node healthy" id="node-llm" transform="translate(730,300)">
+            <circle r="26"/>
+            <text y="4">LLM Router</text>
+            <text y="34" class="node-subtitle" id="label-llm">standard/premium</text>
+          </g>
+          <g class="node healthy" id="node-client" transform="translate(90,290)">
+            <circle r="22"/>
+            <text y="4">Client API</text>
+            <text y="32" class="node-subtitle">Web/CLI Gateway</text>
+          </g>
+          
+        </svg>
+      </div>
+
+      <!-- Split output logging & distributed traces -->
+      <div class="output-grid">
+        
+        <!-- Live Terminal logs -->
+        <div style="display:flex; flex-direction:column; gap:0.5rem;">
+          <div class="terminal-header" style="margin:0;">
+            <span style="color:#fff; font-weight:600;">PLATFORM LIVE UNIX LOGS</span>
+            <span id="log-speed" style="font-family:var(--font-mono)">10 logs/sec</span>
+          </div>
+          <div class="terminal" id="terminal-logs">
+            <!-- Simulated logs print here -->
+          </div>
+        </div>
+
+        <!-- Distributed Trace Tree explorer -->
+        <div style="display:flex; flex-direction:column; gap:0.5rem;">
+          <div class="terminal-header" style="margin:0;">
+            <span style="color:#fff; font-weight:600;">DISTRIBUTED TRACE EXPLORER</span>
+            <span>OpenTelemetry OTLP Schema</span>
+          </div>
+          <div class="trace-explorer" id="trace-explorer-root">
+            <div style="color:var(--text-muted); font-style:italic; padding: 2rem; text-align:center;">
+              Execute a query to capture distributed spans...
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Live LLM Reasoning Report -->
+      <div class="llm-report-section card">
+        <div class="card-header">
+          <h2 class="card-title">LLM Analytical Intelligence Report</h2>
+          <span class="brand-badge" id="report-model" style="background:rgba(255, 0, 127, 0.1); border-color:var(--magenta); color:var(--magenta)">No Active Report</span>
+        </div>
+        <div class="llm-report-content" id="report-content">
+          <div style="color:var(--text-muted); font-style:italic; padding: 2rem; text-align:center;">
+            Trigger an insight query above to generate client-side generative intelligence report...
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script>
+    // ────────────────────────────────────────────────────────────────────────
+    // SIMULATED SYSTEM STATE & METRICS
+    // ────────────────────────────────────────────────────────────────────────
+    const state = {
+      trafficVolume: 10,
+      retrievalDepth: 5,
+      kafkaLag: false,
+      pinotLatencySpike: false,
+      vectorDbOutage: false,
+      llmRateLimit: false,
+      staleEmbeddings: false,
+      retryStormActive: false,
+      
+      uptime: 0,
+      eventsProcessed: 0,
+      dlqCount: 0,
+      queriesExecuted: 0,
+      queriesFailed: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      tokensUsed: 0,
+      costTotal: 0.0,
+      
+      pinotCircuitState: 'CLOSED',
+      pinotFailCount: 0,
+      pinotLastFail: 0,
+      
+      vectorCircuitState: 'CLOSED',
+      vectorFailCount: 0,
+      vectorLastFail: 0,
+      
+      latencyHistory: [],
+      maxLatencyRecords: 20
+    };
+
+    // Lists of dummy premium accounts
+    const PREMIUM_COHORTS = [
+      { id: "usr_prem_0001", arr: 60000, tier: "Enterprise", activeFeatures: 14 },
+      { id: "usr_prem_0012", arr: 12000, tier: "Premium", activeFeatures: 5 },
+      { id: "usr_prem_0016", arr: 36000, tier: "Enterprise", activeFeatures: 8 },
+      { id: "usr_prem_0030", arr: 12000, tier: "Premium", activeFeatures: 4 },
+      { id: "usr_prem_0038", arr: 60000, tier: "Enterprise", activeFeatures: 12 },
+      { id: "usr_prem_0042", arr: 120000, tier: "Strategic", activeFeatures: 22 },
+      { id: "usr_prem_0054", arr: 36000, tier: "Enterprise", activeFeatures: 9 },
+      { id: "usr_prem_0070", arr: 12000, tier: "Premium", activeFeatures: 3 },
+      { id: "usr_prem_0088", arr: 36000, tier: "Enterprise", activeFeatures: 7 },
+      { id: "usr_prem_0113", arr: 12000, tier: "Premium", activeFeatures: 2 },
+      { id: "usr_prem_0115", arr: 60000, tier: "Enterprise", activeFeatures: 11 },
+      { id: "usr_prem_0119", arr: 120000, tier: "Strategic", activeFeatures: 25 },
+      { id: "usr_prem_0131", arr: 36000, tier: "Enterprise", activeFeatures: 10 }
+    ];
+
+    const EVENT_TYPES = [
+      "page_view", "feature_used", "billing_event", "support_ticket", 
+      "team_contraction", "workspace_export_error"
+    ];
+
+    // Local response cache
+    const responseCache = new Map();
+
+    // ────────────────────────────────────────────────────────────────────────
+    // INITIALIZATION & EVENT LISTENERS
+    // ────────────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      setupUIControls();
+      startSimulationLoops();
+      logSystem("INFO", "Enterprise Intelligence Simulator initialized on localhost:8080");
+      logSystem("INFO", "Kafka Topics partition alignment checked: OK. 12 partitions ready.");
+    });
+
+    function setupUIControls() {
+      // Sliders
+      const sldTraffic = document.getElementById('input-traffic');
+      const valTraffic = document.getElementById('val-traffic');
+      sldTraffic.addEventListener('input', (e) => {
+        state.trafficVolume = parseInt(e.target.value);
+        valTraffic.innerText = `${state.trafficVolume} ev/s`;
+        document.getElementById('log-speed').innerText = `${state.trafficVolume} logs/sec`;
+      });
+
+      const sldDepth = document.getElementById('input-depth');
+      const valDepth = document.getElementById('val-depth');
+      sldDepth.addEventListener('input', (e) => {
+        state.retrievalDepth = parseInt(e.target.value);
+        valDepth.innerText = `${state.retrievalDepth} records`;
+      });
+
+      // Switches
+      document.getElementById('switch-kafka-lag').addEventListener('change', (e) => {
+        state.kafkaLag = e.target.checked;
+        updateEdgeAnimations();
+        logSystem(state.kafkaLag ? "WARN" : "INFO", 
+          state.kafkaLag ? "Kafka lag injection enabled. Consumer offsets piling up..." : "Kafka lag cleared. Resuming real-time parsing.");
+      });
+
+      document.getElementById('switch-pinot-latency').addEventListener('change', (e) => {
+        state.pinotLatencySpike = e.target.checked;
+        updateEdgeAnimations();
+        logSystem(state.pinotLatencySpike ? "WARN" : "INFO",
+          state.pinotLatencySpike ? "Pinot table index degradation injected. Table scans will block threads." : "Pinot index recovery completed. SLAs restored.");
+      });
+
+      document.getElementById('switch-vector-outage').addEventListener('change', (e) => {
+        state.vectorDbOutage = e.target.checked;
+        updateEdgeAnimations();
+        logSystem(state.vectorDbOutage ? "ERROR" : "INFO",
+          state.vectorDbOutage ? "Vector DB physical cluster outage injected. Connection timeouts active." : "Vector DB cluster rebooted. Core HNSW pools online.");
+      });
+
+      document.getElementById('switch-llm-limit').addEventListener('change', (e) => {
+        state.llmRateLimit = e.target.checked;
+        logSystem(state.llmRateLimit ? "WARN" : "INFO",
+          state.llmRateLimit ? "LLM API Gateway rate limiter active (throttling simulation to 50% of tokens)." : "LLM limits cleared.");
+      });
+
+      document.getElementById('switch-stale-embeddings').addEventListener('change', (e) => {
+        state.staleEmbeddings = e.target.checked;
+        logSystem(state.staleEmbeddings ? "WARN" : "INFO",
+          state.staleEmbeddings ? "Stale embeddings active. Ingesting user behavior drift to test Fact Verification." : "Embeddings synced.");
+      });
+
+      // Trigger buttons
+      document.getElementById('btn-run-query').addEventListener('click', () => {
+        runManualQuery();
+      });
+
+      document.getElementById('btn-retry-storm').addEventListener('click', () => {
+        triggerRetryStorm();
+      });
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // BACKEND SIMULATION LOOPS (Background Traffic & Uptime)
+    // ────────────────────────────────────────────────────────────────────────
+    function startSimulationLoops() {
+      // Uptime clock
+      setInterval(() => {
+        state.uptime++;
+        const hrs = String(Math.floor(state.uptime / 3600)).padStart(2, '0');
+        const mins = String(Math.floor((state.uptime % 3600) / 60)).padStart(2, '0');
+        const secs = String(state.uptime % 60).padStart(2, '0');
+        document.getElementById('uptime-clock').innerText = `${hrs}:${mins}:${secs}`;
+        
+        // Handle circuit breaker timeouts in background
+        checkCircuitBreakerReset();
+      }, 1000);
+
+      // Background events ingestion loop (running every 1s)
+      setInterval(() => {
+        const eventsCount = state.trafficVolume;
+        let lagModifier = state.kafkaLag ? Math.floor(Math.random() * 40) + 20 : 0;
+        
+        // Process batch
+        for(let i = 0; i < eventsCount; i++) {
+          const user = PREMIUM_COHORTS[Math.floor(Math.random() * PREMIUM_COHORTS.length)];
+          const eventType = EVENT_TYPES[Math.floor(Math.random() * EVENT_TYPES.length)];
+          const hasError = eventType === "workspace_export_error" || (eventType === "team_contraction" && Math.random() < 0.2);
+          
+          state.eventsProcessed++;
+          
+          // Mimic logging downstream sinks
+          if (Math.random() < 0.05) {
+            logSystem("INFO", `Flink ingestion check: User ${user.id} trigger ${eventType} -> Sink Pinot: SUCCESS`, null, null, {
+              user_id: user.id,
+              event_type: eventType,
+              partition: Math.floor(Math.random() * 12)
+            });
+          }
+          
+          if (hasError && Math.random() < 0.15) {
+            state.dlqCount++;
+            logSystem("ERROR", `DLQ Alert: Schema verification failed for user event ${user.id}. Routing to DLQ.`, null, null, {
+              reason: "Invalid nested attributes size limit",
+              user_id: user.id
+            });
+          }
+        }
+        
+        // Update GUI
+        document.getElementById('metric-throughput').innerText = `${eventsCount} ev/s`;
+        document.getElementById('label-kafka').innerText = `topic:user-stream lag:${lagModifier}`;
+        document.getElementById('label-flink').innerText = `session agg: ${Math.floor(eventsCount * 1.8)} aggregations`;
+      }, 1000);
+    }
+
+    function checkCircuitBreakerReset() {
+      const now = Date.now();
+      
+      // Pinot CB
+      if (state.pinotCircuitState === 'OPEN') {
+        if (now - state.pinotLastFail > 8000) {
+          state.pinotCircuitState = 'HALF-OPEN';
+          logSystem("WARN", "Pinot Circuit Breaker entered HALF-OPEN state. Testing connection...");
+          updateTopologyNodeStyles();
+        }
+      }
+      
+      // Vector DB CB
+      if (state.vectorCircuitState === 'OPEN') {
+        if (now - state.vectorLastFail > 8000) {
+          state.vectorCircuitState = 'HALF-OPEN';
+          logSystem("WARN", "Vector DB Circuit Breaker entered HALF-OPEN state. Testing connection...");
+          updateTopologyNodeStyles();
+        }
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // CORE RETRIEVAL & RESILIENCE RUNTIME (Orchestrator)
+    // ────────────────────────────────────────────────────────────────────────
+    async function runManualQuery() {
+      const queries = [
+        "Which enterprise users are at risk of churning?",
+        "Show me users similar to usr_prem_0042 in behavior patterns",
+        "Explain ARR exposure for high risk cohort"
+      ];
+      const query = queries[Math.floor(Math.random() * queries.length)];
+      
+      await executeQueryPipeline(query);
+    }
+
+    async function triggerRetryStorm() {
+      logSystem("WARN", "Thundering Herd Storm triggered: 8 concurrent client requests dispatched!");
+      state.retryStormActive = true;
+      
+      const promises = [];
+      for (let i = 0; i < 8; i++) {
+        promises.push(executeQueryPipeline(`Batch-Storm query #${i+1}: Churn risks`));
+      }
+      
+      await Promise.all(promises);
+      state.retryStormActive = false;
+      logSystem("INFO", "Thundering Herd Storm completed.");
+    }
+
+    async function executeQueryPipeline(query) {
+      state.queriesExecuted++;
+      
+      // Create Trace
+      const trace = {
+        traceId: uuidv4(),
+        name: "IntelligenceQueryFlow",
+        status: "RUNNING",
+        totalLatencyMs: 0,
+        spans: []
+      };
+      
+      const startTime = Date.now();
+      let queryIntent = "churn_analysis";
+      if (query.includes("similar")) {
+        queryIntent = "similar_users";
+      } else if (query.includes("Batch-Storm")) {
+        queryIntent = "general_overview";
+      }
+      
+      logSystem("INFO", `Query Path Received: "${query}" | Intent: ${queryIntent}`, trace.traceId);
+      
+      // Node lighting edge flow animation active
+      pulseEdge("edge-client-agent", "active");
+
+      // Span 1: Intent parsing
+      const parseSpan = startSpan(trace, "QueryUnderstandingIntent");
+      await sleep(30);
+      finishSpan(trace, parseSpan, "SUCCESS", { query_parsed: query, intent: queryIntent });
+      
+      // Span 2: Orchestration & Retrieval
+      pulseEdge("edge-agent-pinot", "active");
+      pulseEdge("edge-agent-vector", "active");
+      const retrievalSpan = startSpan(trace, "AgentOrchestrationAndRetrieval");
+      
+      // Tools run in parallel, simulated
+      const pinotBudget = 300.0;
+      let pinotRes = null;
+      let vectorRes = null;
+      let toolsTriggered = [];
+      
+      // 1. Pinot OLAP fetch
+      try {
+        pinotRes = await callPinotOLAPTool(trace.traceId, retrievalSpan.spanId);
+        toolsTriggered.push({ tool: "structured_pinot_lookup", status: "success", latency_ms: pinotRes.latency });
+      } catch (err) {
+        logSystem("ERROR", `Tool failure: structured_pinot_lookup. Error: ${err.message}`, trace.traceId, retrievalSpan.spanId);
+        toolsTriggered.push({ tool: "structured_pinot_lookup", status: "fallback", latency_ms: 0 });
+        pinotRes = { fallback: true, data: getPinotFallback() };
+      }
+      
+      // 2. Vector DB similarity lookup
+      try {
+        vectorRes = await callVectorDbTool(trace.traceId, retrievalSpan.spanId);
+        toolsTriggered.push({ tool: "semantic_vector_search", status: "success", latency_ms: vectorRes.latency });
+      } catch (err) {
+        logSystem("ERROR", `Tool failure: semantic_vector_search. Error: ${err.message}`, trace.traceId, retrievalSpan.spanId);
+        toolsTriggered.push({ tool: "semantic_vector_search", status: "fallback", latency_ms: 0 });
+        vectorRes = { fallback: true, data: [] };
+      }
+
+      // Context packing (RRF)
+      const rrfResults = reciprocalRankFusion(
+        pinotRes.data.map(d => d.id),
+        vectorRes.data.map(d => d.id)
+      );
+
+      // Take top K matching state.retrievalDepth
+      const slicedRRF = rrfResults.slice(0, state.retrievalDepth);
+      const assembledContext = {
+        structured_telemetry: slicedRRF.map(item => {
+          const u = PREMIUM_COHORTS.find(p => p.id === item.userId);
+          const risk = (item.score * 1.5).toFixed(2);
+          const errRate = (Math.random() * 15 + 2).toFixed(1);
+          return `User ${item.userId}: Risk=${risk} | ARR=$${u ? u.arr : 12000} | Errors=${errRate}% | Tier=${u ? u.tier : 'Premium'}`;
+        }),
+        semantic_similarities: vectorRes.data.map(v => `Matched behavioral signature: ${v.id} (similarity=${v.sim.toFixed(2)})`)
+      };
+
+      finishSpan(trace, retrievalSpan, 
+        (pinotRes.fallback || vectorRes.fallback) ? "DEGRADED" : "SUCCESS",
+        {
+          orchestrator_status: (pinotRes.fallback || vectorRes.fallback) ? "degraded" : "completed",
+          tools_triggered: toolsTriggered
+        }
+      );
+      
+      // Span 3: LLM Inference
+      pulseEdge("edge-agent-llm", "active");
+      const llmSpan = startSpan(trace, "LLMReasoningAndVerification");
+      
+      let llmRes = null;
+      let attempts = 0;
+      const maxAttempts = 3;
+      let llmError = false;
+
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          llmRes = await executeLlmReasoning(assembledContext, queryIntent, trace.traceId, llmSpan.spanId);
+          break;
+        } catch (err) {
+          logSystem("WARN", `LLM Gate call failed (Attempt ${attempts}/${maxAttempts}): ${err.message}`, trace.traceId, llmSpan.spanId);
+          if (attempts >= maxAttempts) {
+            llmError = true;
+            break;
+          }
+          const backoff = attempts * 300;
+          await sleep(backoff); // exponential jitter delay
+        }
+      }
+
+      let reportText = "";
+      if (llmError) {
+        logSystem("ERROR", "LLM Gateway failure. Timeout / Rate Limit bounds exceeded. Running SLA degradation fallback.", trace.traceId, llmSpan.spanId);
+        finishSpan(trace, llmSpan, "FAILURE", { error: "LLM Gate SLA Violation (429)" });
+        
+        llmRes = {
+          content: "### [SLA VIOLATION ERROR] Intelligence Engine Degraded\n\nOur LLM API reasoning gateway is currently overloaded (HTTP 429). The system has triggered downstream paging to operations. System status queries indicate precompiled metrics show high ARR enterprise accounts are stable. Active fallback channels routing analytical cohorts directly to Pinot queries.",
+          modelUsed: "none",
+          modelTier: "none",
+          cost: 0,
+          tokens: 0,
+          hallucinated: false
+        };
+        state.queriesFailed++;
+      } else {
+        // Record details
+        finishSpan(trace, llmSpan, "SUCCESS", {
+          model: llmRes.modelUsed,
+          tier: llmRes.modelTier,
+          cost_usd: llmRes.cost,
+          tokens_total: llmRes.tokens,
+          hallucinated: llmRes.hallucinated,
+          cached: llmRes.cached
+        });
+      }
+
+      // Finish trace
+      trace.totalLatencyMs = Date.now() - startTime;
+      trace.status = llmError ? "FAILURE" : "SUCCESS";
+      
+      // Save stats
+      state.latencyHistory.push(trace.totalLatencyMs);
+      if (state.latencyHistory.length > state.maxLatencyRecords) {
+        state.latencyHistory.shift();
+      }
+      
+      state.tokensUsed += llmRes.tokens;
+      state.costTotal += llmRes.cost;
+
+      // Update GUI Elements
+      updateMetricsDashboard();
+      renderTraceToExplorer(trace);
+      renderReportToView(llmRes);
+      updateTopologyNodeStyles();
+
+      // Clear Edge lines
+      setTimeout(() => {
+        clearEdgePulse("edge-client-agent");
+        clearEdgePulse("edge-agent-pinot");
+        clearEdgePulse("edge-agent-vector");
+        clearEdgePulse("edge-agent-llm");
+      }, 500);
+
+      logSystem("SUCCESS", `Trace ${trace.traceId} completed in ${trace.totalLatencyMs}ms. Status: ${trace.status}`);
+      return trace;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // RETRIEVAL COMPONENT SIMULATIONS
+    // ────────────────────────────────────────────────────────────────────────
+    async function callPinotOLAPTool(traceId, spanId) {
+      if (state.pinotCircuitState === 'OPEN') {
+        throw new Error("Pinot circuit breaker tripped. Skipping connection.");
+      }
+      
+      logSystem("INFO", "Executing tool: structured_pinot_lookup...", traceId, spanId);
+      
+      let delay = Math.random() * 40 + 10;
+      if (state.pinotLatencySpike) {
+        delay = Math.floor(Math.random() * 800) + 1500; // >1.5 seconds spike
+        logSystem("WARN", `Pinot OLAP Index Degradation active. Slow table scan delay: ${delay}ms`, traceId, spanId);
+      }
+      
+      await sleep(delay);
+      
+      if (delay > 300.0) {
+        // SLA timeout breach!
+        state.pinotFailCount++;
+        if (state.pinotFailCount >= 3) {
+          state.pinotCircuitState = 'OPEN';
+          state.pinotLastFail = Date.now();
+          logSystem("ERROR", "Pinot Circuit Breaker TRIPPED (consecutive timeouts exceeded threshold 3)", traceId, spanId);
+        }
+        throw new Error(`Pinot query timed out: took ${delay.toFixed(1)}ms (SLA threshold 300.0ms)`);
+      }
+      
+      // Success
+      if (state.pinotCircuitState === 'HALF-OPEN') {
+        state.pinotCircuitState = 'CLOSED';
+        state.pinotFailCount = 0;
+        logSystem("INFO", "Pinot Circuit Breaker closed successfully after validation probe.", traceId, spanId);
+      }
+      
+      // Return randomized dataset
+      const sortedCohorts = [...PREMIUM_COHORTS].sort(() => Math.random() - 0.5);
+      return {
+        latency: delay,
+        data: sortedCohorts.slice(0, state.retrievalDepth + 2)
+      };
+    }
+
+    async function callVectorDbTool(traceId, spanId) {
+      if (state.vectorCircuitState === 'OPEN') {
+        throw new Error("Vector DB connection bypassed due to tripped circuit.");
+      }
+      
+      logSystem("INFO", "Executing tool: semantic_vector_search...", traceId, spanId);
+      
+      await sleep(Math.random() * 30 + 15);
+      
+      if (state.vectorDbOutage) {
+        state.vectorFailCount++;
+        if (state.vectorFailCount >= 3) {
+          state.vectorCircuitState = 'OPEN';
+          state.vectorLastFail = Date.now();
+          logSystem("ERROR", "Vector DB Circuit Breaker TRIPPED (consecutive network failures exceeded threshold 3)", traceId, spanId);
+        }
+        throw new Error("Vector DB connection failure: HTTP 500 Connection Refused");
+      }
+      
+      // Success
+      if (state.vectorCircuitState === 'HALF-OPEN') {
+        state.vectorCircuitState = 'CLOSED';
+        state.vectorFailCount = 0;
+        logSystem("INFO", "Vector DB Circuit Breaker closed after successful response.", traceId, spanId);
+      }
+      
+      const matches = PREMIUM_COHORTS.map(p => ({
+        id: p.id,
+        sim: Math.random() * 0.35 + 0.65 // similarity 0.65 - 1.00
+      })).sort((a,b) => b.sim - a.sim);
+      
+      return {
+        latency: 15,
+        data: matches.slice(0, state.retrievalDepth + 2)
+      };
+    }
+
+    function reciprocalRankFusion(pinotIds, vectorIds) {
+      let scores = {};
+      const k = 60;
+      pinotIds.forEach((id, idx) => {
+        scores[id] = (scores[id] || 0) + 1.0 / (k + idx + 1);
+      });
+      vectorIds.forEach((id, idx) => {
+        scores[id] = (scores[id] || 0) + 1.0 / (k + idx + 1);
+      });
+      
+      return Object.keys(scores).map(id => ({
+        userId: id,
+        score: scores[id]
+      })).sort((a,b) => b.score - a.score);
+    }
+
+    function getPinotFallback() {
+      return PREMIUM_COHORTS.slice(0, 3);
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // LLM SIMULATION & HALLUCINATION CHECK
+    // ────────────────────────────────────────────────────────────────────────
+    async function executeLlmReasoning(context, intent, traceId, spanId) {
+      // 429 Throttle simulation
+      if (state.llmRateLimit) {
+        const threshold = state.retryStormActive ? 0.9 : 0.5;
+        if (Math.random() < threshold) {
+          throw new Error("HTTP 429 Too Many Requests (Rate limit breached for workspace tokens)");
+        }
+      }
+
+      // Check Cache
+      const cacheKey = JSON.stringify(context) + "_" + intent;
+      if (responseCache.has(cacheKey)) {
+        state.cacheHits++;
+        const cachedItem = responseCache.get(cacheKey);
+        logSystem("INFO", "LLM Semantic Cache Hit! Bypassing inference generation.", traceId, spanId);
+        return { ...cachedItem, cached: true };
+      }
+      state.cacheMisses++;
+
+      // Router
+      let model = "gpt-4o-mini";
+      let tier = "utility";
+      let costIn = 0.00015;
+      let costOut = 0.00060;
+      let delay = 350;
+
+      if (intent === "churn_analysis" || intent === "similar_users") {
+        model = "gpt-4o";
+        tier = "standard";
+        costIn = 0.00250;
+        costOut = 0.01000;
+        delay = 800;
+      }
+      
+      if (context.structured_telemetry.length > 8) {
+        model = "gpt-4-turbo";
+        tier = "premium";
+        costIn = 0.01000;
+        costOut = 0.03000;
+        delay = 1800;
+      }
+
+      logSystem("INFO", `Routing to LLM: model=${model} (${tier} tier) based on query context size`, traceId, spanId);
+      await sleep(delay + Math.random()*200);
+
+      // Estimate tokens
+      const promptChars = JSON.stringify(context).length;
+      const inputTokens = Math.floor(promptChars / 4) + 120;
+      const outputTokens = Math.floor(Math.random() * 200) + 150;
+      
+      const cost = ((inputTokens / 1000.0) * costIn) + ((outputTokens / 1000.0) * costOut);
+
+      // Generate content
+      let content = "";
+      let hallucinated = false;
+
+      if (intent === "churn_analysis") {
+        const riskCount = context.structured_telemetry.length;
+        const totalARR = riskCount * 36000;
+        let flaggedList = context.structured_telemetry.map(t => {
+          const match = t.match(/User (usr_prem_\d+)/);
+          return match ? match[1] : null;
+        }).filter(Boolean);
+
+        // Inject intentional hallucinated user ID if stale embeddings switch is checked
+        if (state.staleEmbeddings) {
+          flaggedList.push("usr_prem_HALLUCINATED_9999");
+          hallucinated = true;
+        }
+
+        const listStr = flaggedList.slice(0, 3).join(", ");
+
+        content = `### Enterprise Churn Risk Intelligence Report\n\n` +
+                  `#### 1. High Churn Risk Cohorts\n` +
+                  `Based on hybrid Reciprocal Rank Fusion, **${riskCount} premium accounts** are at elevated churn risk. ` +
+                  `The total ARR exposure is **$${totalARR.toLocaleString()}**.\n\n` +
+                  `#### 2. Key Telemetry Anomaly Flags\n` +
+                  `- **Billing Friction**: Card payment failures detected across multiple enterprise subscriptions (e.g. ${listStr}).\n` +
+                  `- **Technical Degradation**: Rolling workspace error rates spiked to average for top-priority cohorts.\n` +
+                  `- **Frustrated Sentiment**: Average support ticket sentiment index dipped below -0.40.\n\n` +
+                  `#### 3. Immediate Action Plan\n` +
+                  `1. **CSM Outreach**: Initiate proactive outreach to the accounts listed above within 24 hours.\n` +
+                  `2. **Billing Grace Period**: Contact billing leads for accounts showing payment failures to prevent automated card suspends.\n` +
+                  `3. **Engineering Review**: Task API team to resolve high error rates on workspace export endpoints.`;
+      } else {
+        content = `### Platform Analytics Summary\n\n` +
+                  `Analyzed premium cohorts across the system.\n` +
+                  `Active user trends are stable with an average customer health rating of **74/100**.\n` +
+                  `Recommended action: investigate support queues for billing errors.`;
+      }
+
+      // Fact Checker
+      if (hallucinated) {
+        logSystem("ERROR", "HALLUCINATION ALERT: LLM mentioned user ID 'usr_prem_HALLUCINATED_9999' which was absent in context!", traceId, spanId);
+      } else {
+        logSystem("INFO", "Hallucination Fact-Checking: SUCCESS. All output entity references verified against retrieved context.", traceId, spanId);
+      }
+
+      const response = {
+        content: content,
+        modelUsed: model,
+        modelTier: tier,
+        cost: parseFloat(cost.toFixed(6)),
+        tokens: inputTokens + outputTokens,
+        hallucinated: hallucinated,
+        cached: false
+      };
+
+      responseCache.set(cacheKey, response);
+      return response;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // TRACING UTILITIES
+    // ────────────────────────────────────────────────────────────────────────
+    function startSpan(trace, name) {
+      const parent = trace.spans.length > 0 ? trace.spans[trace.spans.length - 1] : null;
+      const span = {
+        name: name,
+        spanId: uuidv4().substring(0, 8),
+        parentSpanId: parent ? parent.spanId : null,
+        startTime: Date.now(),
+        latencyMs: 0,
+        status: "RUNNING",
+        metadata: {}
+      };
+      trace.spans.push(span);
+      return span;
+    }
+
+    function finishSpan(trace, spanObj, status = "SUCCESS", metadata = {}) {
+      const match = trace.spans.find(s => s.spanId === spanObj.spanId);
+      if (match) {
+        match.latencyMs = Date.now() - match.startTime;
+        match.status = status;
+        match.metadata = metadata;
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // GRAPHICS, DIAGRAMS & TELEMETRY RENDERING
+    // ────────────────────────────────────────────────────────────────────────
+    function updateMetricsDashboard() {
+      // 1. Throughput is handled by separate interval loop
+      
+      // 2. Average Latency
+      if (state.latencyHistory.length > 0) {
+        const sum = state.latencyHistory.reduce((a, b) => a + b, 0);
+        const avg = Math.round(sum / state.latencyHistory.length);
+        
+        // P95 calculation
+        const sorted = [...state.latencyHistory].sort((a,b) => a-b);
+        const p95Idx = Math.floor(sorted.length * 0.95);
+        const p95 = sorted[p95Idx];
+        
+        document.getElementById('metric-latency').innerText = `${p95} ms`;
+        
+        const cardLat = document.getElementById('card-latency');
+        if (p95 > 1500) {
+          cardLat.className = "metric-card alert";
+        } else if (p95 > 1000) {
+          cardLat.className = "metric-card warn";
+        } else {
+          cardLat.className = "metric-card success";
+        }
+      }
+      
+      // 3. Error / SLA breach rate
+      const errorRate = state.queriesExecuted > 0 
+        ? ((state.queriesFailed / state.queriesExecuted) * 100).toFixed(1) 
+        : "0.0";
+      document.getElementById('metric-error-rate').innerText = `${errorRate}%`;
+      const cardErr = document.getElementById('card-error-rate');
+      if (parseFloat(errorRate) > 5.0) {
+        cardErr.className = "metric-card alert";
+      } else if (parseFloat(errorRate) > 0.0) {
+        cardErr.className = "metric-card warn";
+      } else {
+        cardErr.className = "metric-card success";
+      }
+
+      // 4. Cumulative cost
+      document.getElementById('metric-cost').innerText = `$${state.costTotal.toFixed(4)}`;
+      
+      // Cache Rate
+      const totalCacheRequests = state.cacheHits + state.cacheMisses;
+      const hitRate = totalCacheRequests > 0 
+        ? ((state.cacheHits / totalCacheRequests) * 100).toFixed(0) 
+        : "0";
+      
+      // Update label on Agent
+      document.getElementById('label-agent').innerText = `Cache hit rate: ${hitRate}%`;
+    }
+
+    function updateTopologyNodeStyles() {
+      // Pinot CB State Node
+      const nodePinot = document.getElementById('node-pinot');
+      const labelPinot = document.getElementById('label-pinot');
+      
+      if (state.pinotCircuitState === 'OPEN') {
+        nodePinot.className = "node failed";
+        labelPinot.innerText = "CB: OPEN (TIMEOUT)";
+        pulseEdge("edge-agent-pinot", "failed");
+      } else if (state.pinotCircuitState === 'HALF-OPEN') {
+        nodePinot.className = "node degraded";
+        labelPinot.innerText = "CB: HALF-OPEN";
+        pulseEdge("edge-agent-pinot", "degraded");
+      } else {
+        nodePinot.className = "node healthy";
+        labelPinot.innerText = "CB: CLOSED (SLA:300ms)";
+        clearEdgePulse("edge-agent-pinot");
+      }
+
+      // Vector DB Outage Node
+      const nodeVector = document.getElementById('node-vector');
+      const labelVector = document.getElementById('label-vector');
+      
+      if (state.vectorCircuitState === 'OPEN') {
+        nodeVector.className = "node failed";
+        labelVector.innerText = "CB: OPEN (CONN_ERR)";
+        pulseEdge("edge-agent-vector", "failed");
+      } else if (state.vectorCircuitState === 'HALF-OPEN') {
+        nodeVector.className = "node degraded";
+        labelVector.innerText = "CB: HALF-OPEN";
+        pulseEdge("edge-agent-vector", "degraded");
+      } else {
+        nodeVector.className = "node healthy";
+        labelVector.innerText = "CB: CLOSED (HNSW:Cosine)";
+        clearEdgePulse("edge-agent-vector");
+      }
+
+      // Global status indicator
+      const dot = document.getElementById('system-status-dot');
+      const text = document.getElementById('system-status-text');
+      
+      if (state.pinotCircuitState === 'OPEN' || state.vectorCircuitState === 'OPEN') {
+        dot.style.backgroundColor = "var(--red)";
+        dot.style.boxShadow = "0 0 10px var(--red)";
+        text.innerText = "DEGRADED SLA OUTAGE";
+      } else if (state.pinotLatencySpike || state.vectorDbOutage || state.llmRateLimit) {
+        dot.style.backgroundColor = "var(--orange)";
+        dot.style.boxShadow = "0 0 10px var(--orange)";
+        text.innerText = "CHAOS SIMULATION ACTIVE";
+      } else {
+        dot.style.backgroundColor = "var(--green)";
+        dot.style.boxShadow = "0 0 10px var(--green)";
+        text.innerText = "SYSTEM HEALTHY";
+      }
+    }
+
+    function updateEdgeAnimations() {
+      // Toggle ingestion path animation
+      const edgeFlinkPinot = document.getElementById('edge-flink-pinot');
+      const edgeFlinkVector = document.getElementById('edge-flink-vector');
+      
+      if (state.pinotLatencySpike) {
+        edgeFlinkPinot.setAttribute("class", "edge degraded");
+      } else {
+        edgeFlinkPinot.setAttribute("class", "edge active");
+      }
+      
+      if (state.vectorDbOutage) {
+        edgeFlinkVector.setAttribute("class", "edge failed");
+      } else {
+        edgeFlinkVector.setAttribute("class", "edge active");
+      }
+    }
+
+    function pulseEdge(edgeId, statusClass) {
+      const edge = document.getElementById(edgeId);
+      if (edge) {
+        edge.setAttribute("class", `edge ${statusClass}`);
+      }
+    }
+
+    function clearEdgePulse(edgeId) {
+      const edge = document.getElementById(edgeId);
+      if (edge) {
+        edge.setAttribute("class", "edge");
+      }
+    }
+
+    function renderTraceToExplorer(trace) {
+      const container = document.getElementById('trace-explorer-root');
+      container.innerHTML = ""; // Clear
+
+      const traceWrapper = document.createElement('div');
+      traceWrapper.className = "trace-tree";
+      
+      // Outer trace header
+      const traceHeader = document.createElement('div');
+      traceHeader.innerHTML = `<span style="color:#f43f5e">Trace:</span> <strong>${trace.name}</strong> <span style="color:var(--text-muted)">(${trace.traceId.substring(0,8)}...)</span> - <span class="span-latency">${trace.totalLatencyMs}ms</span>`;
+      traceHeader.style.paddingBottom = "0.5rem";
+      traceHeader.style.borderBottom = "1px solid rgba(255,255,255,0.08)";
+      traceWrapper.appendChild(traceHeader);
+
+      // Recursive span builder
+      function buildSpanTree(parentSpanId, targetDom) {
+        const children = trace.spans.filter(s => s.parentSpanId === parentSpanId);
+        children.forEach(span => {
+          const spanNode = document.createElement('div');
+          spanNode.className = "trace-span-node";
+          
+          const header = document.createElement('div');
+          header.className = "trace-span-header";
+          
+          const statusClass = span.status.toLowerCase();
+          header.innerHTML = `
+            <span class="span-name">${span.name}</span>
+            <div>
+              <span class="span-latency">${span.latencyMs.toFixed(1)}ms</span>
+              <span class="span-status ${statusClass}">${span.status}</span>
+            </div>
+          `;
+          
+          spanNode.appendChild(header);
+
+          // Metadata block
+          if (span.metadata && Object.keys(span.metadata).length > 0) {
+            const metaDiv = document.createElement('div');
+            metaDiv.className = "span-meta";
+            for (let [k, v] of Object.entries(span.metadata)) {
+              let displayVal = typeof v === 'object' ? JSON.stringify(v) : v;
+              metaDiv.innerHTML += `<span>• <strong>${k}</strong>: ${displayVal}</span>`;
+            }
+            spanNode.appendChild(metaDiv);
+          }
+
+          targetDom.appendChild(spanNode);
+          
+          // Render nested children
+          buildSpanTree(span.spanId, spanNode);
+        });
+      }
+
+      buildSpanTree(null, traceWrapper);
+      container.appendChild(traceWrapper);
+    }
+
+    function renderReportToView(llmRes) {
+      const contentDiv = document.getElementById('report-content');
+      document.getElementById('report-model').innerText = llmRes.modelUsed;
+      
+      // Quick markdown parser for mock content
+      let text = llmRes.content;
+      text = text.replace(/### (.*)/g, '<h3>$1</h3>');
+      text = text.replace(/#### (.*)/g, '<h4>$1</h4>');
+      text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      text = text.replace(/- (.*)/g, '<li>$1</li>');
+      text = text.replace(/\n\n/g, '<br/>');
+      
+      contentDiv.innerHTML = text;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // UNIX LOGGING SYSTEM
+    // ────────────────────────────────────────────────────────────────────────
+    function logSystem(level, msg, traceId = null, spanId = null, extra = null) {
+      const term = document.getElementById('terminal-logs');
+      const line = document.createElement('div');
+      line.className = `terminal-line ${level.toLowerCase()}`;
+      
+      const ts = new Date().toISOString();
+      let logObj = {
+        timestamp: ts,
+        level: level,
+        service: "intelligence-platform",
+        message: msg
+      };
+      
+      if (traceId) logObj.trace_id = traceId.substring(0,8);
+      if (spanId) logObj.span_id = spanId;
+      if (extra) logObj.extra = extra;
+      
+      line.innerText = JSON.stringify(logObj);
+      term.appendChild(line);
+      
+      // Auto scroll
+      term.scrollTop = term.scrollHeight;
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // MISC HELPERS
+    // ────────────────────────────────────────────────────────────────────────
+    function uuidv4() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+  </script>
+</body>
+</html>
